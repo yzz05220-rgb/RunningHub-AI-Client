@@ -12,35 +12,6 @@ RunningHub AI Client 是一个基于 React 和 Vite 构建的现代化桌面端�
 - **📝 历史记录管理**: 自动记录所有任务的运行历史和输出结果，支持随时回溯和查看。
 - **🌙 深色模式**: 默认启用深色主题界面，提供专业且舒适的视觉体验。
 
-## 🛠️ 技术架构
-
-本项目采用现代 Web 技术栈构建：
-
-- **核心框架**: [React 19](https://react.dev/) - 用于构建用户界面的 JavaScript 库
-- **构建工具**: [Vite](https://vitejs.dev/) - 极速的前端构建工具
-- **开发语言**: [TypeScript](https://www.typescriptlang.org/) - 提供类型安全的开发体验
-- **样式方案**: [Tailwind CSS](https://tailwindcss.com/) - 实用优先的 CSS 框架
-- **图标库**: [Lucide React](https://lucide.dev/) - 美观统一的图标组件
-
-## 📂 项目结构
-
-```text
-runninghub-ai-client/
-├── components/          # 业务组件
-│   ├── BatchSettingsModal.tsx  # 批量运行设置模态框
-│   ├── StepConfig.tsx          # 第一步：连接配置组件
-│   ├── StepEditor.tsx          # 第二步：参数编辑组件
-│   ├── StepRunning.tsx         # 第三步：任务运行状态组件
-│   └── StepResult.tsx          # 第四步：结果展示组件
-├── services/            # 核心服务层
-│   ├── api.ts                  # RunningHub API 接口封装
-│   └── autoSaveService.ts      # 文件自动保存逻辑实现
-├── public/              # 静态资源目录
-├── App.tsx              # 应用主组件（包含核心状态管理）
-├── index.tsx            # 应用入口文件
-├── types.ts             # TypeScript 类型定义
-├── vite.config.ts       # Vite 配置文件
-└── 启动开发服务.bat      # Windows 快速启动脚本
 ```
 
 ## 🚀 快速开始
