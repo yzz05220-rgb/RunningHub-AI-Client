@@ -1,13 +1,36 @@
 import React, { useState } from 'react';
 import { HistoryItem } from '../types';
-import { Download, ExternalLink, FileIcon, ImageIcon, VideoIcon, History, Trash2, Maximize2, X, Clock, Terminal } from 'lucide-react';
+import { Download, ExternalLink, FileIcon, History, Trash2, Maximize2, X } from 'lucide-react';
 
 interface StepResultProps {
   history: HistoryItem[];
   onClear: () => void;
+  isExpanded?: boolean;
 }
 
-const StepResult: React.FC<StepResultProps> = ({ history, onClear }) => {
+// 格式化时长 mm:ss
+function formatDuration(ms: number): string {
+  if (!ms || ms < 0) return '00:00';
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// 格式化日期
+function formatDate(timestamp: number): string {
+  return new Date(timestamp).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).replace(/\//g, '-');
+}
+
+const StepResult: React.FC<StepResultProps> = ({ history, onClear, isExpanded = false }) => {
   const [preview, setPreview] = useState<{ url: string; type: 'image' | 'video' | 'audio' | 'unknown' } | null>(null);
 
   const getFileType = (url: string) => {
@@ -37,130 +60,191 @@ const StepResult: React.FC<StepResultProps> = ({ history, onClear }) => {
     }
   };
 
-  // Flatten all outputs into a single array for thumbnail grid
-  const allOutputs = history.flatMap(item =>
-    item.outputs.map(output => ({
-      ...output,
-      historyId: item.id,
-      timestamp: item.timestamp
-    }))
-  );
-
-  const totalOutputs = allOutputs.length;
-
   if (history.length === 0) {
     return (
-      <div className="flex flex-col h-full bg-slate-50 dark:bg-[#0F1115]/50">
-        <div className="p-5 border-b border-slate-200 dark:border-slate-800/50 bg-white dark:bg-[#161920] flex justify-between items-center">
-          <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white">
-            <History className="w-5 h-5 text-brand-500" />
+      <div className="flex flex-col h-full">
+        <div className="p-4 border-b border-white/10 flex justify-between items-center">
+          <h2 className="text-base font-bold flex items-center gap-2 text-white">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+              <History className="w-4 h-4 text-white" />
+            </div>
             历史记录
           </h2>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 p-8 text-center">
-          <Terminal className="w-12 h-12 mb-4 opacity-20" />
-          <h3 className="text-base font-medium text-slate-500 dark:text-slate-400">准备就绪</h3>
-          <p className="text-sm max-w-xs mt-2">配置中间的参数并点击"运行任务"，生成历史将显示在这里。</p>
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center mb-6">
+            <svg className="w-12 h-12 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M12 8v4l3 3" strokeLinecap="round" strokeLinejoin="round" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">准备就绪</h3>
+          <p className="text-sm text-slate-400 max-w-[220px]">配置参数并点击"运行"，结果将显示在这里</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#161920] relative">
-      <div className="p-5 border-b border-slate-200 dark:border-slate-800/50 bg-white dark:bg-[#161920] flex justify-between items-center shrink-0">
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2 text-slate-800 dark:text-white">
-            <History className="w-5 h-5 text-brand-500" />
-            历史记录
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            共 {totalOutputs} 个结果
-          </p>
-        </div>
+    <div className="flex flex-col h-full relative">
+      <div className="p-4 border-b border-white/10 flex justify-between items-center shrink-0">
+        <h2 className="text-base font-bold flex items-center gap-2 text-white">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+            <History className="w-4 h-4 text-white" />
+          </div>
+          历史记录
+          <span className="text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+            {history.length}
+          </span>
+        </h2>
         <button
           onClick={onClear}
           title="清空历史"
-          className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+          className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
         >
           <Trash2 className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Thumbnail Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-          {allOutputs.map((output, idx) => {
-            const type = getFileType(output.fileUrl);
-            return (
-              <div
-                key={`${output.historyId}-${idx}`}
-                className="group relative aspect-square bg-slate-200 dark:bg-[#0F1115] rounded-lg overflow-hidden border border-slate-300 dark:border-slate-700 cursor-pointer hover:ring-2 hover:ring-brand-500 transition-all"
-                onClick={() => setPreview({ url: output.fileUrl, type })}
-              >
-                {type === 'image' ? (
-                  <img src={output.fileUrl} alt="Thumbnail" className="w-full h-full object-cover" />
-                ) : type === 'video' ? (
-                  <video src={output.fileUrl} className="w-full h-full object-cover opacity-80" muted preload="metadata" />
-                ) : (
-                  <div className="flex flex-col items-center justify-center w-full h-full text-slate-400">
-                    <FileIcon className="w-6 h-6 mb-1" />
-                    <span className="text-[8px] uppercase">{type}</span>
-                  </div>
-                )}
+      {/* Task List */}
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+        {history.map((item) => {
+          const duration = item.endTime ? item.endTime - item.startTime : 0;
 
-                {/* Hover Overlay */}
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 backdrop-blur-[1px]">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPreview({ url: output.fileUrl, type });
-                    }}
-                    className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full backdrop-blur-md transition-colors"
-                    title="放大预览"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDownload(output.fileUrl);
-                    }}
-                    className="p-1.5 bg-white/20 hover:bg-white/40 text-white rounded-full backdrop-blur-md transition-colors"
-                    title="下载"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
+          return (
+            <div key={item.id} className="bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-white/20 transition-colors">
+
+              {/* Header: App Name & Status (Always Visible) */}
+              <div className="px-4 py-3 flex items-center justify-between border-b border-white/10 bg-white/[0.02]">
+                <div className="flex items-center gap-2.5 overflow-hidden flex-1">
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${item.status === 'SUCCESS' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                  <span className={`text-sm font-bold text-slate-200 ${isExpanded ? 'break-words' : 'truncate'}`}>
+                    {item.appName || '未知应用'}
+                  </span>
                 </div>
-
-                {/* Type Badge */}
-                {type !== 'image' && (
-                  <div className="absolute top-1 right-1 px-1 py-0.5 bg-black/50 backdrop-blur-sm rounded text-[6px] text-white font-bold uppercase pointer-events-none">
-                    {type}
-                  </div>
+                {/* 失败时的简短提示（未展开时） */}
+                {!isExpanded && item.status === 'FAILED' && (
+                  <span className="text-[10px] text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">失败</span>
                 )}
               </div>
-            );
-          })}
-        </div>
+
+              {/* Metadata Section (Expanded Only) */}
+              {isExpanded && (
+                <div className="px-4 py-2.5 bg-black/20 text-xs text-slate-400 space-y-2 border-b border-white/10">
+                  <div className="flex justify-between items-center">
+                    <span>{formatDate(item.timestamp)}</span>
+                    <div className="flex items-center gap-1.5 font-mono text-slate-500">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                      {formatDuration(duration)}
+                    </div>
+                  </div>
+
+                  {item.remoteTaskId && (
+                    <div className="font-mono break-all opacity-60 text-[10px]">
+                      ID: {item.remoteTaskId}
+                    </div>
+                  )}
+
+                  {item.status === 'FAILED' && item.error && (
+                    <div className="text-red-400 pt-2 border-t border-white/5">
+                      {item.error}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Images Section - 垂直排列，分割线 */}
+              {item.outputs.length > 0 && (
+                <div className="flex flex-col">
+                  {item.outputs.map((output, idx) => {
+                    const type = getFileType(output.fileUrl);
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`relative group/item cursor-pointer ${idx > 0 ? 'border-t border-white/10' : ''}`}
+                      >
+                        {/* Image Container with Padding and Rounded Corners */}
+                        <div className="p-3 bg-slate-900/50">
+                          <div className="relative rounded-lg overflow-hidden" onClick={() => setPreview({ url: output.fileUrl, type })}>
+                            {/* Image/Video - 完整显示 */}
+                            {type === 'image' ? (
+                              <img
+                                src={output.fileUrl}
+                                className="w-full h-auto object-contain block"
+                                alt=""
+                              />
+                            ) : type === 'video' ? (
+                              <video
+                                src={output.fileUrl}
+                                className="w-full h-auto object-contain block"
+                                muted
+                                preload="metadata"
+                              />
+                            ) : (
+                              <div className="w-full h-32 flex items-center justify-center bg-slate-800">
+                                <FileIcon className="w-8 h-8 text-slate-500" />
+                              </div>
+                            )}
+
+                            {/* Hover Overlay */}
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center gap-4 backdrop-blur-[2px]">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPreview({ url: output.fileUrl, type });
+                                }}
+                                className="p-3 bg-white/10 hover:bg-white/30 text-white rounded-full backdrop-blur-md transition-colors border border-white/20"
+                                title="放大预览"
+                              >
+                                <Maximize2 className="w-5 h-5" />
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDownload(output.fileUrl);
+                                }}
+                                className="p-3 bg-white/10 hover:bg-white/30 text-white rounded-full backdrop-blur-md transition-colors border border-white/20"
+                                title="下载"
+                              >
+                                <Download className="w-5 h-5" />
+                              </button>
+                            </div>
+
+                            {/* Type Badge */}
+                            {type !== 'image' && (
+                              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm rounded px-2 py-1 text-[10px] font-bold text-white uppercase pointer-events-none">
+                                {type}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Full Screen Modal */}
       {preview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <button
             onClick={() => setPreview(null)}
-            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-50"
+            className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-50"
           >
             <X className="w-6 h-6" />
           </button>
 
-          <div className="relative max-w-5xl w-full max-h-screen flex flex-col items-center justify-center">
+          <div className="relative max-w-7xl w-full h-full flex flex-col items-center justify-center">
             {preview.type === 'image' && (
               <img
                 src={preview.url}
                 alt="Preview"
-                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+                className="max-w-full max-h-[90vh] object-contain shadow-2xl"
               />
             )}
             {preview.type === 'video' && (
@@ -168,33 +252,27 @@ const StepResult: React.FC<StepResultProps> = ({ history, onClear }) => {
                 src={preview.url}
                 controls
                 autoPlay
-                className="max-w-full max-h-[85vh] rounded-lg shadow-2xl bg-black"
+                className="max-w-full max-h-[90vh] shadow-2xl bg-black"
               />
             )}
-            {(preview.type === 'audio' || preview.type === 'unknown') && (
-              <div className="bg-slate-800 p-10 rounded-2xl flex flex-col items-center text-white shadow-2xl border border-slate-700">
-                <FileIcon className="w-20 h-20 mb-6 text-slate-400" />
-                <audio controls src={preview.url} className="w-64" />
-                <a
-                  href={preview.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-6 flex items-center gap-2 text-brand-400 hover:text-brand-300"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  在浏览器中打开
-                </a>
-              </div>
-            )}
 
-            <div className="mt-4 flex gap-4">
+            <div className="absolute bottom-8 flex gap-4">
               <button
                 onClick={() => handleDownload(preview.url)}
-                className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 rounded-full font-medium hover:bg-slate-200 transition-colors shadow-lg"
+                className="flex items-center gap-2 px-6 py-3 bg-white hover:bg-slate-200 text-slate-900 rounded-full font-bold transition-colors shadow-lg"
               >
-                <Download className="w-4 h-4" />
-                下载文件
+                <Download className="w-5 h-5" />
+                下载原图
               </button>
+              <a
+                href={preview.url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full font-bold transition-colors backdrop-blur-md"
+              >
+                <ExternalLink className="w-5 h-5" />
+                浏览器打开
+              </a>
             </div>
           </div>
         </div>

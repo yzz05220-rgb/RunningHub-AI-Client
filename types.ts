@@ -30,8 +30,14 @@ export interface TaskOutput {
 }
 
 export interface HistoryItem {
-  id: string;
+  id: string; // Local Task ID
+  remoteTaskId?: string; // RunningHub Task ID
   timestamp: number;
+  startTime: number;
+  endTime?: number;
+  appName?: string;
+  appId?: string;
+  error?: string;
   outputs: TaskOutput[];
   status: 'SUCCESS' | 'FAILED';
 }
@@ -75,4 +81,36 @@ export interface AccountInfo {
 export interface AutoSaveConfig {
   enabled: boolean;
   directoryName: string | null;
+}
+
+export interface InstalledApp {
+  id: string; // UUID
+  webappId: string;
+  name: string;
+  coverStyle: string; // CSS gradient string or image URL
+  description?: string;
+  createdAt: number;
+}
+
+export interface AppConfig {
+  apiKey: string;
+  autoSave: AutoSaveConfig;
+}
+
+export type TaskStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'QUEUED';
+
+export interface BackgroundTask {
+  id: string; // Local Task ID
+  remoteTaskId?: string; // RunningHub Task ID (from API)
+  appId: string; // InstalledApp ID
+  appName: string;
+  status: TaskStatus;
+  progress: number; // 0-100
+  startTime: number;
+  endTime?: number;
+  params: NodeInfo[];
+  batchIndex?: number; // If part of a batch
+  totalBatch?: number; // Total items in batch
+  result?: TaskOutput[];
+  error?: string;
 }
