@@ -25,7 +25,7 @@ jobs:
       - name: Build and Package
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run electron:publish
+        run: npm run electron:build -- --publish never
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

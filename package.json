@@ -1,7 +1,7 @@
 {
   "name": "runninghub-ai-client",
   "private": true,
-  "version": "1.3.8",
+  "version": "1.3.9",
   "productName": "RunningHub AI",
   "description": "RunningHub AI Client - 桌面端应用",
   "author": "RunningHub AI Team",
