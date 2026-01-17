@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain, Menu, session, dialog, shell } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+
+// 使用备用方案检测开发环境，避免 ES Module 兼容性问题
+const isDev = !app.isPackaged;
 const { autoUpdater } = require('electron-updater');
 const fs = require('fs');
 const https = require('https');
