@@ -66,7 +66,7 @@ function createWindow() {
     // 加载页面 - 从dist目录加载
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
     // 开发环境如果需要调试，可以取消注释
-    // mainWindow.webContents.openDevTools()
+    mainWindow.webContents.openDevTools()
 }
 
 // 处理登录请求

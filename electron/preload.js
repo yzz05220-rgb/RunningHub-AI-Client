@@ -1,4 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron')
+console.log('--- Preload script loaded ---');
+console.log('ipcRenderer available:', !!ipcRenderer);
 
 // 暴露给渲染进程的API
 contextBridge.exposeInMainWorld('electronAPI', {
