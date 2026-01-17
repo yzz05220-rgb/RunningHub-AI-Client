@@ -13,9 +13,8 @@ import {
   Grid3X3, Trash2, Star, Plus, Check, PlusCircle
 } from 'lucide-react';
 import { PayPalButton } from './components/PayPalButton';
-import { UpdateNotification } from './components/UpdateNotification';
+import UpdateNotification from './components/UpdateNotification';
 import { AboutDialog } from './components/AboutDialog';
-import { checkForUpdates, triggerDownload, VersionInfo } from './services/updateService';
 import { isElectronEnvironment } from './utils/envDetection';
 import packageInfo from './package.json';
 import { APP_CONFIG } from './src/config';
@@ -63,11 +62,9 @@ const App: React.FC = () => {
   const { tasks } = useTaskStore();
 
   // --- Auto Update ---
-  const [availableUpdate, setAvailableUpdate] = useState<VersionInfo | null>(null);
+  // Managed by UpdateNotification component
   const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-
-  const IGNORED_VERSION_KEY = 'rh_ignored_update_version';
 
   // --- Init ---
   useEffect(() => {
@@ -96,42 +93,53 @@ const App: React.FC = () => {
       return () => cleanup();
     }
 
-    // 检测更新
-    console.log('[Update Check] Environment:', isElectronEnvironment() ? 'Electron' : 'Web');
-    console.log('[Update Check] Current version:', packageInfo.version);
-    console.log('[Update Check] Checking URL:', APP_CONFIG.UPDATE_CHECK_URL);
-
-    if (isElectronEnvironment()) {
-      checkForUpdates(
-        packageInfo.version,
-        APP_CONFIG.UPDATE_CHECK_URL
-      ).then((updateInfo) => {
-        console.log('[Update Check] Result:', updateInfo);
-        if (updateInfo) {
-          // 检查是否忽略了该版本
-          const ignoredVersion = localStorage.getItem(IGNORED_VERSION_KEY);
-          if (ignoredVersion === updateInfo.version) {
-            console.log(`[Update Check] Version ${updateInfo.version} is ignored`);
-            return;
-          }
-          console.log('Update available:', updateInfo);
-          setAvailableUpdate(updateInfo);
-        } else {
-          console.log('[Update Check] No update available');
-        }
-      }).catch((err) => {
-        console.error('[Update Check] Failed:', err);
+    // 监听显示关于对话框事件
+    if ((window as any).electronAPI?.onShowAbout) {
+      const cleanup = (window as any).electronAPI.onShowAbout(() => {
+        setShowAboutDialog(true);
       });
-
-      // 监听显示关于对话框事件
-      if ((window as any).electronAPI?.onShowAbout) {
-        const cleanup = (window as any).electronAPI.onShowAbout(() => {
-          setShowAboutDialog(true);
-        });
-        return () => cleanup?.();
-      }
+      return () => cleanup?.();
     }
   }, []);
+
+  // ... (refreshData, extractIdFromUrl, handleSyncFromRH, handleAddApp, etc. remain the same) ...
+
+  // --- Manual Update Check ---
+  const handleManualCheckUpdate = () => {
+    if ((window as any).electronAPI?.checkUpdate) {
+      console.log('[Manual Update Check] Sending check request...');
+      setIsCheckingUpdate(true);
+      (window as any).electronAPI.checkUpdate();
+
+      // Listen for result once
+      const api = (window as any).electronAPI;
+      const offSuccess = api.onUpdateAvailable(() => {
+        setIsCheckingUpdate(false);
+        setShowAboutDialog(false); // UpdateNotification will show up
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+      const offNotAvailable = api.onUpdateNotAvailable(() => {
+        setIsCheckingUpdate(false);
+        alert('当前已是最新版本');
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+      const offError = api.onUpdateError((msg: string) => {
+        setIsCheckingUpdate(false);
+        alert('检查更新失败: ' + msg);
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+    } else {
+      alert('手动检查仅在客户端环境可用');
+    }
+  };
+
+
 
   const refreshData = () => {
     setAppPool(appService.getAppPool());
@@ -292,34 +300,7 @@ const App: React.FC = () => {
     setShowSettings(true);
   };
 
-  // --- Manual Update Check ---
-  const handleManualCheckUpdate = async () => {
-    console.log('[Manual Update Check] Starting...');
-    setIsCheckingUpdate(true);
-    try {
-      const updateInfo = await checkForUpdates(packageInfo.version, APP_CONFIG.UPDATE_CHECK_URL);
-      if (updateInfo) {
-        setAvailableUpdate(updateInfo);
-        setShowAboutDialog(false);
-      } else {
-        alert('当前已是最新版本！');
-      }
-    } catch (err) {
-      console.error('[Manual Update Check] Failed:', err);
-      alert('检查更新失败，请稍后重试');
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
 
-  // --- Ignore Update ---
-  const handleIgnoreUpdate = () => {
-    if (availableUpdate) {
-      localStorage.setItem(IGNORED_VERSION_KEY, availableUpdate.version);
-      console.log(`[Update Check] Ignored version ${availableUpdate.version}`);
-      setAvailableUpdate(null);
-    }
-  };
 
   const saveSettings = () => {
     setApiKey(tempApiKey);
@@ -354,14 +335,7 @@ const App: React.FC = () => {
       <TaskFloater />
 
       {/* 更新通知 */}
-      {availableUpdate && (
-        <UpdateNotification
-          versionInfo={availableUpdate}
-          onDownload={() => triggerDownload(availableUpdate.downloadUrl)}
-          onDismiss={() => setAvailableUpdate(null)}
-          onIgnore={handleIgnoreUpdate}
-        />
-      )}
+      <UpdateNotification />
 
       {/* 关于对话框 */}
       {showAboutDialog && (

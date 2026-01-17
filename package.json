@@ -2,32 +2,31 @@
   "name": "runninghub-ai-client",
   "private": true,
   "version": "1.3.6",
-  "description": "RunningHub AI Client",
-  "author": "RunningHub",
+  "productName": "RunningHub AI",
+  "description": "RunningHub AI Client - 桌面端应用",
+  "author": "RunningHub AI Team",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:electron": "npm run build && npx electron-builder",
-    "build:win": "npm run build && npx electron-builder --win",
-    "build:web": "cross-env VITE_API_HOST= vite build",
-    "build:mac": "npm run build && npx electron-builder --mac",
-    "build:linux": "npm run build && npx electron-builder --linux",
-    "electron": "electron .",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "vite build && electron-builder",
+    "electron:publish": "vite build && electron-builder --publish always"
   },
   "dependencies": {
     "@types/file-saver": "^2.0.7",
+    "archiver": "^7.0.1",
     "clsx": "^2.1.1",
+    "electron-is-dev": "^3.0.1",
+    "electron-updater": "^6.3.9",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "tailwind-merge": "^3.4.0",
-    "zustand": "^5.0.10",
-    "archiver": "^7.0.1"
+    "zustand": "^5.0.10"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.9.1",
@@ -38,11 +37,57 @@
     "@tauri-apps/plugin-shell": "^2.3.3",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "cross-env": "^7.0.3",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "electron": "^30.5.1",
     "electron-builder": "^24.13.3",
-    "electron-packager": "^17.1.2",
+    "electron-log": "^5.4.3",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "wait-on": "^9.0.3"
+  },
+  "build": {
+    "appId": "cn.runninghub.ai-client",
+    "productName": "RunningHub AI",
+    "copyright": "Copyright © 2026 RunningHub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/rh.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/icon.ico",
+      "artifactName": "RunningHub-AI-${version}-Setup.${ext}",
+      "publisherName": "RunningHub",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RunningHub AI"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "yzz05220-rgb",
+        "repo": "RunningHub-AI-Client"
+      }
+    ]
   }
 }
