@@ -97,10 +97,50 @@ export const useTaskStore = create<TaskState>()(
                             switch (result.code) {
                                 case API_CODE.SUCCESS:
                                     clearInterval(pollInterval);
+
+                                    // Normalize result.data to ensure {fileUrl: string}[] format
+                                    let normalizedResults: { fileUrl: string, fileType?: string }[] = [];
+                                    const rawData = result.data;
+
+                                    if (Array.isArray(rawData)) {
+                                        normalizedResults = rawData.map((item: any) => {
+                                            // Case 1: Already correct format {fileUrl: "..."}
+                                            if (item && typeof item.fileUrl === 'string') {
+                                                return { fileUrl: item.fileUrl, fileType: item.fileType };
+                                            }
+                                            // Case 2: Item is a string URL directly
+                                            if (typeof item === 'string') {
+                                                return { fileUrl: item };
+                                            }
+                                            // Case 3: Item has url instead of fileUrl
+                                            if (item && typeof item.url === 'string') {
+                                                return { fileUrl: item.url, fileType: item.fileType || item.type };
+                                            }
+                                            // Case 4: Skip invalid items
+                                            return null;
+                                        }).filter(Boolean) as { fileUrl: string, fileType?: string }[];
+                                    } else if (rawData && typeof rawData === 'object') {
+                                        // Case 5: Single object with outputs array
+                                        if (Array.isArray(rawData.outputs)) {
+                                            normalizedResults = rawData.outputs.map((item: any) => {
+                                                if (typeof item === 'string') return { fileUrl: item };
+                                                if (item && typeof item.fileUrl === 'string') return item;
+                                                if (item && typeof item.url === 'string') return { fileUrl: item.url };
+                                                return null;
+                                            }).filter(Boolean);
+                                        }
+                                        // Case 6: Single object with fileUrl
+                                        else if (typeof rawData.fileUrl === 'string') {
+                                            normalizedResults = [{ fileUrl: rawData.fileUrl }];
+                                        }
+                                    }
+
+                                    console.log('[Task] Normalized results:', normalizedResults);
+
                                     get().updateTask(taskId, {
                                         status: 'SUCCESS',
                                         progress: 100,
-                                        result: result.data as any,
+                                        result: normalizedResults,
                                         endTime: Date.now()
                                     });
                                     onTaskComplete();
@@ -117,17 +157,22 @@ export const useTaskStore = create<TaskState>()(
                                 case API_CODE.FAILED:
                                 case API_CODE.QUEUE_MAXED:
                                     clearInterval(pollInterval);
-                                    let errorMsg = result.msg || '任务执行失败';
+                                    let errorMsg = typeof result.msg === 'string' ? result.msg : '任务执行失败';
                                     if (result.data?.failedReason) {
                                         const reason = result.data.failedReason;
-                                        errorMsg = reason.exception_message || reason.exception_type || errorMsg;
-                                        if (reason.node_name) {
+                                        const exMsg = reason.exception_message || reason.exception_type;
+                                        if (typeof exMsg === 'string') {
+                                            errorMsg = exMsg;
+                                        } else if (exMsg) {
+                                            errorMsg = JSON.stringify(exMsg);
+                                        }
+                                        if (reason.node_name && typeof reason.node_name === 'string') {
                                             errorMsg = `[${reason.node_name}] ${errorMsg}`;
                                         }
                                     }
                                     get().updateTask(taskId, {
                                         status: 'FAILED',
-                                        error: errorMsg,
+                                        error: String(errorMsg),
                                         endTime: Date.now()
                                     });
                                     onTaskComplete();

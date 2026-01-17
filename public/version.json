@@ -1,0 +1,6 @@
+{
+    "version": "1.1.0",
+    "releaseDate": "2026-01-16",
+    "changelog": "## v1.2.0 更新内容\n\n### 新增功能\n- ✨ Web端支持 PayPal 在线支付\n- 🔄 客户端自动更新检测机制\n- 📋 更新日志展示\n\n### 优化改进\n- 🎨 优化设置面板 UI\n- 🔧 环境检测工具支持",
+    "downloadUrl": "https://github.com/your-repo/releases/download/v1.2.0/RunningHub-AI-Setup.exe"
+}

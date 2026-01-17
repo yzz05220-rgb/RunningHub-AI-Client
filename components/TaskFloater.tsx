@@ -120,8 +120,10 @@ const TaskFloater: React.FC = () => {
 
             {/* Success Toast */}
             {showSuccessToast && (
-                <div className="bg-emerald-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-4">
-                    <CheckCircle className="w-5 h-5" />
+                <div className="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-5 py-4 rounded-2xl shadow-2xl shadow-emerald-500/30 flex items-center gap-3 animate-in slide-in-from-bottom-4 border border-emerald-400/30">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                        <CheckCircle className="w-5 h-5" />
+                    </div>
                     <div>
                         <p className="text-sm font-bold">{showSuccessToast.name}</p>
                         <p className="text-xs opacity-80">任务完成</p>
@@ -131,24 +133,26 @@ const TaskFloater: React.FC = () => {
 
             {/* Error Toast */}
             {showErrorToast && (
-                <div className="bg-red-500 text-white px-4 py-3 rounded-xl shadow-lg max-w-xs animate-in slide-in-from-bottom-4">
-                    <div className="flex items-center gap-2 mb-1">
-                        <AlertTriangle className="w-5 h-5" />
+                <div className="bg-gradient-to-r from-red-500 to-rose-500 text-white px-5 py-4 rounded-2xl shadow-2xl shadow-red-500/30 max-w-xs animate-in slide-in-from-bottom-4 border border-red-400/30">
+                    <div className="flex items-center gap-3 mb-2">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                            <AlertTriangle className="w-5 h-5" />
+                        </div>
                         <p className="text-sm font-bold">{showErrorToast.name} 失败</p>
                     </div>
-                    <p className="text-xs opacity-90 leading-relaxed">{showErrorToast.error}</p>
+                    <p className="text-xs opacity-90 leading-relaxed pl-[52px]">{typeof showErrorToast.error === 'string' ? showErrorToast.error : JSON.stringify(showErrorToast.error)}</p>
                 </div>
             )}
 
             {/* Main Floater */}
-            <div className={`bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-2xl overflow-hidden transition-all duration-300 ${isExpanded ? 'w-96' : 'w-auto'}`}>
+            <div className={`bg-slate-900/95 backdrop-blur-xl border border-white/10 shadow-2xl shadow-black/50 rounded-2xl overflow-hidden transition-all duration-300 ${isExpanded ? 'w-96' : 'w-auto'} ${isDragging ? 'scale-[1.02] shadow-emerald-500/20' : ''}`}>
 
                 {/* Header (Always Visible) */}
                 <div
-                    className={`flex items-center gap-3 p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${isExpanded ? 'border-b border-slate-100 dark:border-slate-700/50' : ''} cursor-grab active:cursor-grabbing`}
+                    className={`flex items-center gap-3 p-4 hover:bg-white/5 transition-colors ${isExpanded ? 'border-b border-white/10' : ''} cursor-grab active:cursor-grabbing`}
                     onMouseDown={handleMouseDown}
                 >
-                    <div className={`relative w-10 h-10 rounded-xl flex items-center justify-center ${runningTasks > 0 ? 'bg-gradient-to-br from-brand-500 to-teal-500 animate-pulse-slow' : failedTasks > 0 ? 'bg-red-500' : 'bg-emerald-500'}`}>
+                    <div className={`relative w-11 h-11 rounded-xl flex items-center justify-center shadow-lg ${runningTasks > 0 ? 'bg-gradient-to-br from-emerald-500 to-teal-500 animate-pulse shadow-emerald-500/30' : failedTasks > 0 ? 'bg-gradient-to-br from-red-500 to-rose-500 shadow-red-500/30' : 'bg-gradient-to-br from-emerald-500 to-teal-500 shadow-emerald-500/30'}`}>
                         {runningTasks > 0 ? (
                             <Loader2 className="w-5 h-5 text-white animate-spin" />
                         ) : failedTasks > 0 ? (
@@ -157,7 +161,7 @@ const TaskFloater: React.FC = () => {
                             <CheckCircle className="w-5 h-5 text-white" />
                         )}
                         {(runningTasks > 0 || failedTasks > 0) && (
-                            <span className={`absolute -top-1 -right-1 w-4 h-4 ${failedTasks > 0 ? 'bg-red-600' : 'bg-brand-600'} text-white text-[9px] font-bold flex items-center justify-center rounded-full border-2 border-white dark:border-slate-800`}>
+                            <span className={`absolute -top-1 -right-1 w-5 h-5 ${failedTasks > 0 ? 'bg-red-600' : 'bg-emerald-600'} text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-slate-900 shadow-lg`}>
                                 {runningTasks || failedTasks}
                             </span>
                         )}
@@ -165,8 +169,8 @@ const TaskFloater: React.FC = () => {
 
                     {isExpanded ? (
                         <div className="flex-1">
-                            <h3 className="text-sm font-bold text-slate-800 dark:text-gray-100">任务管理器</h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                            <h3 className="text-sm font-bold text-white">任务管理器</h3>
+                            <p className="text-xs text-slate-400">
                                 {runningTasks > 0 ? `${runningTasks} 个运行中` : ''}
                                 {runningTasks > 0 && successTasks > 0 ? ' · ' : ''}
                                 {successTasks > 0 ? `${successTasks} 个完成` : ''}
@@ -175,7 +179,7 @@ const TaskFloater: React.FC = () => {
                         </div>
                     ) : (
                         <div className="flex flex-col">
-                            <span className="text-sm font-medium text-slate-800 dark:text-gray-200">
+                            <span className="text-sm font-semibold text-white">
                                 {runningTasks > 0 ? '正在运行...' : failedTasks > 0 ? '有任务失败' : '全部完成'}
                             </span>
                         </div>
@@ -308,7 +312,7 @@ const TaskItem: React.FC<{ task: BackgroundTask, onRemove: () => void, onCancel:
                         <div className="flex items-start gap-2">
                             <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                             <p className="text-xs text-red-600 dark:text-red-400 leading-relaxed break-all">
-                                {task.error}
+                                {typeof task.error === 'string' ? task.error : JSON.stringify(task.error)}
                             </p>
                         </div>
                     </div>
@@ -322,15 +326,17 @@ const TaskItem: React.FC<{ task: BackgroundTask, onRemove: () => void, onCancel:
                         {task.result.slice(0, 4).map((output, idx) => (
                             <a
                                 key={idx}
-                                href={output.fileUrl}
+                                href={typeof output?.fileUrl === 'string' ? output.fileUrl : '#'}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="w-12 h-12 rounded-lg overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700 hover:ring-2 hover:ring-brand-500 transition-all"
                             >
-                                {output.fileUrl.match(/\.(mp4|webm|mov)$/i) ? (
+                                {typeof output?.fileUrl === 'string' && output.fileUrl.match(/\.(mp4|webm|mov)$/i) ? (
                                     <video src={output.fileUrl} className="w-full h-full object-cover" muted />
-                                ) : (
+                                ) : typeof output?.fileUrl === 'string' ? (
                                     <img src={output.fileUrl} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs text-slate-500">?</div>
                                 )}
                             </a>
                         ))}

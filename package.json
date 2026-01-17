@@ -1,21 +1,33 @@
 {
-  "name": "runninghub-ai-客户端1.0",
+  "name": "runninghub-ai-client",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.3.5",
+  "description": "RunningHub AI Client",
+  "author": "RunningHub",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:electron": "npm run build && npx electron-builder",
+    "build:win": "npm run build && npx electron-builder --win",
+    "build:web": "cross-env VITE_API_HOST= vite build",
+    "build:mac": "npm run build && npx electron-builder --mac",
+    "build:linux": "npm run build && npx electron-builder --linux",
+    "electron": "electron .",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@types/file-saver": "^2.0.7",
     "clsx": "^2.1.1",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "tailwind-merge": "^3.4.0",
-    "zustand": "^5.0.10"
+    "zustand": "^5.0.10",
+    "archiver": "^7.0.1"
   },
   "devDependencies": {
     "@tauri-apps/api": "^2.9.1",
@@ -26,6 +38,10 @@
     "@tauri-apps/plugin-shell": "^2.3.3",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3",
+    "electron-packager": "^17.1.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

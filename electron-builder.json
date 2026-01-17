@@ -1,0 +1,47 @@
+{
+    "appId": "cn.runninghub.ai-client",
+    "productName": "RunningHub AI",
+    "copyright": "Copyright © 2026 RunningHub",
+    "asar": true,
+    "directories": {
+        "output": "release"
+    },
+    "files": [
+        "dist/**/*",
+        "electron/**/*",
+        "public/rh.png",
+        "node_modules/**/*",
+        "!node_modules/**/test/**",
+        "!node_modules/**/*.md",
+        "!node_modules/**/.bin/**"
+    ],
+    "asarUnpack": [
+        "node_modules/archiver/**/*"
+    ],
+    "win": {
+        "target": [
+            {
+                "target": "nsis",
+                "arch": [
+                    "x64"
+                ]
+            }
+        ],
+        "icon": "src-tauri/icons/icon.ico",
+        "artifactName": "RunningHub-AI-${version}-Setup.${ext}",
+        "publisherName": "RunningHub",
+        "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+        "oneClick": false,
+        "perMachine": false,
+        "allowToChangeInstallationDirectory": true,
+        "deleteAppDataOnUninstall": false,
+        "installerIcon": "src-tauri/icons/icon.ico",
+        "uninstallerIcon": "src-tauri/icons/icon.ico",
+        "installerHeaderIcon": "src-tauri/icons/icon.ico",
+        "createDesktopShortcut": true,
+        "createStartMenuShortcut": true,
+        "shortcutName": "RunningHub AI"
+    }
+}
