@@ -5,7 +5,6 @@ const STORAGE_KEY_APP_POOL = 'rh_app_pool';         // 中间区域的应用池�
 const STORAGE_KEY_LOCAL_FAVORITES = 'rh_local_favorites'; // 左侧本地收藏（ID列表）
 const STORAGE_KEY_API_KEY = 'rh_api_key';
 const STORAGE_KEY_ACCESS_TOKEN = 'rh_access_token';
-const STORAGE_KEY_REFRESH_TOKEN = 'rh_refresh_token';
 
 // App pool item with local management fields
 export interface AppPoolItem extends FavoriteAppInfo {
@@ -184,13 +183,5 @@ export const appService = {
 
     setAccessToken: (token: string): void => {
         localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, token);
-    },
-
-    getRefreshToken: (): string => {
-        return localStorage.getItem(STORAGE_KEY_REFRESH_TOKEN) || '';
-    },
-
-    setRefreshToken: (token: string): void => {
-        localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, token);
     }
 };

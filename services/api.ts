@@ -1,11 +1,71 @@
-import { ApiResponse, NodeInfo, SubmitTaskData, UploadData, TaskOutput } from '../types';
+import { ApiResponse, NodeInfo, SubmitTaskData, UploadData, TaskOutput, AccountInfo } from '../types';
+import { parseHttpError } from '../utils/error';
 
 const API_HOST = "https://www.runninghub.cn";
 
-// Helper to handle fetch errors
+// 重试配置
+interface RetryConfig {
+  maxRetries: number;
+  baseDelay: number;
+  maxDelay: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxRetries: 3,
+  baseDelay: 1000,
+  maxDelay: 10000,
+};
+
+/**
+ * 带重试机制的 fetch 请求
+ * @param url 请求 URL
+ * @param options fetch 选项
+ * @param config 重试配置
+ * @returns Response 对象
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  config: RetryConfig = DEFAULT_RETRY_CONFIG
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // 对于服务器错误（5xx），进行重试
+      if (response.status >= 500 && attempt < config.maxRetries) {
+        console.warn(`[API] Server error ${response.status}, retrying... (${attempt + 1}/${config.maxRetries})`);
+        const delay = Math.min(config.baseDelay * Math.pow(2, attempt), config.maxDelay);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // 网络错误，进行重试
+      if (attempt < config.maxRetries) {
+        console.warn(`[API] Network error, retrying... (${attempt + 1}/${config.maxRetries}):`, lastError.message);
+        const delay = Math.min(config.baseDelay * Math.pow(2, attempt), config.maxDelay);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+    }
+  }
+
+  throw lastError || new Error('请求失败');
+}
+
+/**
+ * 处理 API 响应
+ */
 async function handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
   if (!response.ok) {
-    throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+    const error = parseHttpError(response.status, response.statusText);
+    throw new Error(error.message);
   }
   const data = await response.json();
   return data;
@@ -38,7 +98,7 @@ export interface WebappDetail {
  */
 export const getWebappDetail = async (apiKey: string, webappId: string): Promise<WebappDetail> => {
   const url = `${API_HOST}/api/webapp/apiCallDemo?apiKey=${apiKey}&webappId=${webappId}`;
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -64,18 +124,19 @@ export const getNodeList = async (apiKey: string, webappId: string): Promise<Nod
 
 /**
  * Upload File
+ * 文件上传使用较少的重试次数
  */
 export const uploadFile = async (apiKey: string, file: File): Promise<UploadData> => {
   const url = `${API_HOST}/task/openapi/upload`;
   const formData = new FormData();
   formData.append('apiKey', apiKey);
-  formData.append('fileType', 'input'); // As per python script
+  formData.append('fileType', 'input');
   formData.append('file', file);
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
-    body: formData, // fetch automatically sets Content-Type to multipart/form-data with boundary
-  });
+    body: formData,
+  }, { ...DEFAULT_RETRY_CONFIG, maxRetries: 2 });
 
   const json: ApiResponse<UploadData> = await handleResponse(response);
 
@@ -98,7 +159,7 @@ export const submitTask = async (apiKey: string, webappId: string, nodeInfoList:
     nodeInfoList
   };
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -117,8 +178,9 @@ export const submitTask = async (apiKey: string, webappId: string, nodeInfoList:
 
 /**
  * Query Task Outputs (Polling)
+ * 轮询接口使用较少的重试
  */
-export const queryTaskOutputs = async (apiKey: string, taskId: string): Promise<ApiResponse<TaskOutput[] | any>> => {
+export const queryTaskOutputs = async (apiKey: string, taskId: string): Promise<ApiResponse<TaskOutput[]>> => {
   const url = `${API_HOST}/task/openapi/outputs`;
 
   const payload = {
@@ -126,13 +188,13 @@ export const queryTaskOutputs = async (apiKey: string, taskId: string): Promise<
     taskId
   };
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload)
-  });
+  }, { ...DEFAULT_RETRY_CONFIG, maxRetries: 1 });
 
   return await handleResponse(response);
 };
@@ -148,7 +210,7 @@ export const cancelTask = async (apiKey: string, taskId: string): Promise<void> 
     taskId
   };
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -156,7 +218,7 @@ export const cancelTask = async (apiKey: string, taskId: string): Promise<void> 
     body: JSON.stringify(payload)
   });
 
-  const json: ApiResponse<any> = await handleResponse(response);
+  const json: ApiResponse<unknown> = await handleResponse(response);
 
   if (json.code !== 0) {
     throw new Error(json.msg || 'Cancel failed');
@@ -166,16 +228,10 @@ export const cancelTask = async (apiKey: string, taskId: string): Promise<void> 
 /**
  * Get Account Info
  */
-export const getAccountInfo = async (apiKey: string): Promise<{
-  remainCoins: string;
-  currentTaskCounts: string;
-  remainMoney: string | null;
-  currency: string | null;
-  apiType: string;
-}> => {
+export const getAccountInfo = async (apiKey: string): Promise<AccountInfo> => {
   const url = `${API_HOST}/uc/openapi/accountStatus`;
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -184,13 +240,7 @@ export const getAccountInfo = async (apiKey: string): Promise<{
     body: JSON.stringify({ apikey: apiKey })
   });
 
-  const json: ApiResponse<{
-    remainCoins: string;
-    currentTaskCounts: string;
-    remainMoney: string | null;
-    currency: string | null;
-    apiType: string;
-  }> = await handleResponse(response);
+  const json: ApiResponse<AccountInfo> = await handleResponse(response);
 
   if (json.code !== 0) {
     throw new Error(json.msg || 'Failed to get account info');
@@ -220,7 +270,7 @@ export interface FavoriteAppInfo {
 export const getFavoriteApps = async (accessToken: string): Promise<FavoriteAppInfo[]> => {
   const url = `${API_HOST}/api/likeOrCollect/webapp/list`;
 
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -240,7 +290,16 @@ export const getFavoriteApps = async (accessToken: string): Promise<FavoriteAppI
   }
 
   // Map the response to our simplified structure
-  return json.data.records.map((app: any) => ({
+  interface AppRecord {
+    id: string;
+    name: string;
+    intro?: string;
+    covers?: Array<{ thumbnailUri?: string }>;
+    owner?: { name?: string; avatar?: string };
+    statisticsInfo?: { useCount?: number };
+  }
+  
+  return json.data.records.map((app: AppRecord) => ({
     id: app.id,
     name: app.name,
     intro: app.intro || '',
@@ -251,4 +310,18 @@ export const getFavoriteApps = async (accessToken: string): Promise<FavoriteAppI
     },
     useCount: app.statisticsInfo?.useCount || 0,
   }));
+};
+
+/**
+ * 验证 API Key 是否有效
+ * @param apiKey API Key
+ * @returns 是否有效
+ */
+export const validateApiKey = async (apiKey: string): Promise<boolean> => {
+  try {
+    await getAccountInfo(apiKey);
+    return true;
+  } catch {
+    return false;
+  }
 };

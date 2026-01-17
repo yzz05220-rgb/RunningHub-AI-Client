@@ -475,24 +475,24 @@ const StepConfig: React.FC<StepConfigProps> = ({ onNext, initialApiKey, initialW
                     <div className="space-y-2">
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 dark:text-slate-400">RH 币余额</span>
-                        <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{String(accountInfo.remainCoins ?? '')}</span>
+                        <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{accountInfo.remainCoins}</span>
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 dark:text-slate-400">运行中任务</span>
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{String(accountInfo.currentTaskCounts ?? '')}</span>
+                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{accountInfo.currentTaskCounts}</span>
                       </div>
                       {accountInfo.remainMoney && (
                         <div className="flex justify-between items-center">
                           <span className="text-xs text-slate-500 dark:text-slate-400">钱包余额</span>
                           <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                            {String(accountInfo.currency ?? '')} {String(accountInfo.remainMoney ?? '')}
+                            {accountInfo.currency} {accountInfo.remainMoney}
                           </span>
                         </div>
                       )}
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 dark:text-slate-400">API 类型</span>
                         <span className="text-xs px-2 py-0.5 bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 rounded-full">
-                          {String(accountInfo.apiType ?? '')}
+                          {accountInfo.apiType}
                         </span>
                       </div>
                     </div>

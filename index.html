@@ -152,27 +152,6 @@
       animation: bounce-gentle 2s ease-in-out infinite;
     }
   </style>
-
-  <!-- PayPal SDK (仅Web端加载) -->
-  <script>
-    // 检测环境，仅在 Web 端（非 Electron）加载 PayPal SDK
-    // 在开发模式下直接加载，在生产模式下检查环境变量
-    const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.toLowerCase().includes('electron');
-    const enablePayPal = '%VITE_ENABLE_PAYPAL%';
-
-    // 开发模式下 enablePayPal 会是字符串 '%VITE_ENABLE_PAYPAL%'
-    // 生产模式下会被替换为 'true' 或 'false'
-    const shouldLoadPayPal = !isElectron && (enablePayPal === 'true' || enablePayPal.includes('VITE_ENABLE_PAYPAL'));
-
-    if (shouldLoadPayPal) {
-      const paypalScript = document.createElement('script');
-      // 使用 Buttons 组件而非 Hosted Buttons，支持完整的支付流程
-      paypalScript.src = 'https://www.paypal.com/sdk/js?client-id=AXnm4V-1TLQsmzOKljf6_22LruekktYVUD2kdoSvjcBADkuRSGhTwjyN2lhHzVxXInZoQ_j7aGqsfiNG&components=buttons&disable-funding=venmo&currency=USD';
-      document.head.appendChild(paypalScript);
-      console.log('PayPal SDK loaded for Web environment');
-    }
-  </script>
-
   <script type="importmap">
 {
   "imports": {

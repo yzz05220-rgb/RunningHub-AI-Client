@@ -42,14 +42,24 @@ export interface HistoryItem {
   status: 'SUCCESS' | 'FAILED';
 }
 
+// API 任务失败原因
+export interface TaskFailedReason {
+  node_name: string;
+  exception_message: string;
+  exception_type?: string;
+  traceback: string;
+}
+
 export interface TaskStatusData {
-  status: string; // Not explicitly in API, but inferred from logic
-  failedReason?: {
-    node_name: string;
-    exception_message: string;
-    traceback: string;
-  };
-  fileUrl?: string; // Present when finished in some endpoints
+  status: string;
+  failedReason?: TaskFailedReason;
+  fileUrl?: string;
+}
+
+// 任务输出查询响应
+export interface TaskOutputResponse {
+  outputs?: TaskOutput[];
+  failedReason?: TaskFailedReason;
 }
 
 export enum AppStep {
@@ -113,4 +123,19 @@ export interface BackgroundTask {
   totalBatch?: number; // Total items in batch
   result?: TaskOutput[];
   error?: string;
+  // 新增字段 - 用于任务执行
+  apiKey?: string;
+  webappId?: string;
+  queuePosition?: number;
+}
+
+// 文件类型
+export type FileType = 'image' | 'video' | 'audio' | 'unknown';
+
+// 用户友好的错误信息
+export interface UserFriendlyError {
+  title: string;
+  message: string;
+  suggestion?: string;
+  originalError?: string;
 }

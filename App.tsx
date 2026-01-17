@@ -10,20 +10,16 @@ import {
   Loader2, AlertCircle, Settings, ArrowLeft, RefreshCw,
   Zap, Heart, ChevronRight, Key, Save, Eye, EyeOff, X,
   ExternalLink, Maximize2, Minimize2, History, Sparkles,
-  Grid3X3, Trash2, Star, Plus, Check, PlusCircle
+  Grid3X3, Trash2, Star, Plus, Check, PlusCircle, Wrench
 } from 'lucide-react';
-import { PayPalButton } from './components/PayPalButton';
+import ToolsModal from './components/ToolsModal';
 import UpdateNotification from './components/UpdateNotification';
-import { AboutDialog } from './components/AboutDialog';
-import { isElectronEnvironment } from './utils/envDetection';
-import packageInfo from './package.json';
-import { APP_CONFIG } from './src/config';
+import AboutDialog from './components/AboutDialog';
 
 const App: React.FC = () => {
   // --- Global Settings ---
   const [apiKey, setApiKey] = useState('');
   const [accessToken, setAccessToken] = useState('');
-  const [refreshToken, setRefreshToken] = useState('');
 
   // --- App Pool (中间区域) ---
   const [appPool, setAppPool] = useState<AppPoolItem[]>([]);
@@ -43,13 +39,13 @@ const App: React.FC = () => {
 
   // --- UI State ---
   const [showSettings, setShowSettings] = useState(false);
+  const [showToolsModal, setShowToolsModal] = useState(false);
+  const [showAboutDialog, setShowAboutDialog] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempAccessToken, setTempAccessToken] = useState('');
-  const [tempRefreshToken, setTempRefreshToken] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
-  const [showRefreshToken, setShowRefreshToken] = useState(false);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
@@ -61,109 +57,25 @@ const App: React.FC = () => {
   // Task Store
   const { tasks } = useTaskStore();
 
-  // --- Auto Update ---
-  // Managed by UpdateNotification component
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-
   // --- Init ---
   useEffect(() => {
     document.documentElement.classList.add('dark');
     setApiKey(appService.getApiKey());
     setAccessToken(appService.getAccessToken());
-    setRefreshToken(appService.getRefreshToken());
     refreshData();
 
-    // 监听 Electron 登录回调
-    if ((window as any).electronAPI?.onLoginSuccess) {
-      const cleanup = (window as any).electronAPI.onLoginSuccess((_event: any, tokens: any) => {
-        console.log('Login success, received tokens:', tokens);
-        if (tokens.accessToken) {
-          setAccessToken(tokens.accessToken);
-          setTempAccessToken(tokens.accessToken);
-          appService.setAccessToken(tokens.accessToken);
-        }
-        if (tokens.refreshToken) {
-          setRefreshToken(tokens.refreshToken);
-          setTempRefreshToken(tokens.refreshToken);
-          appService.setRefreshToken(tokens.refreshToken);
-        }
-        setShowSettings(true); // 确保设置窗口打开以便用户看到
-      });
-      return () => cleanup();
-    }
-
-    // 监听显示关于对话框事件
-    if ((window as any).electronAPI?.onShowAbout) {
-      const cleanup = (window as any).electronAPI.onShowAbout(() => {
+    // 监听 Electron 关于对话框事件
+    if ((window as any).electronAPI) {
+      const unbindAbout = (window as any).electronAPI.onShowAbout(() => {
         setShowAboutDialog(true);
       });
-      return () => cleanup?.();
+      return () => unbindAbout();
     }
   }, []);
-
-  // ... (refreshData, extractIdFromUrl, handleSyncFromRH, handleAddApp, etc. remain the same) ...
-
-  // --- Manual Update Check ---
-  const handleManualCheckUpdate = () => {
-    if ((window as any).electronAPI?.checkUpdate) {
-      console.log('[Manual Update Check] Sending check request...');
-      setIsCheckingUpdate(true);
-      (window as any).electronAPI.checkUpdate();
-
-      // Listen for result once
-      const api = (window as any).electronAPI;
-      const offSuccess = api.onUpdateAvailable(() => {
-        setIsCheckingUpdate(false);
-        setShowAboutDialog(false); // UpdateNotification will show up
-        offSuccess();
-        offError();
-        offNotAvailable();
-      });
-      const offNotAvailable = api.onUpdateNotAvailable(() => {
-        setIsCheckingUpdate(false);
-        alert('当前已是最新版本');
-        offSuccess();
-        offError();
-        offNotAvailable();
-      });
-      const offError = api.onUpdateError((msg: string) => {
-        setIsCheckingUpdate(false);
-        alert('检查更新失败: ' + msg);
-        offSuccess();
-        offError();
-        offNotAvailable();
-      });
-    } else {
-      alert('手动检查仅在客户端环境可用');
-    }
-  };
-
-
 
   const refreshData = () => {
     setAppPool(appService.getAppPool());
     setLocalFavorites(appService.getLocalFavorites());
-  };
-
-  // --- Extract ID from URL or plain ID ---
-  const extractIdFromUrl = (input: string): string => {
-    const trimmed = input.trim();
-
-    // 匹配 https://www.runninghub.cn/ai-detail/2012024954291757057
-    const urlMatch = trimmed.match(/ai-detail\/(\d+)/);
-    if (urlMatch) {
-      return urlMatch[1];
-    }
-
-    // 匹配查询参数 webappId=xxx
-    const queryMatch = trimmed.match(/webappId=(\d+)/);
-    if (queryMatch) {
-      return queryMatch[1];
-    }
-
-    // 直接返回（应该就是 ID）
-    return trimmed;
   };
 
   // --- Sync from RH (去重添加) ---
@@ -189,21 +101,15 @@ const App: React.FC = () => {
 
   // --- Add App Manually ---
   const handleAddApp = async () => {
-    // 自动提取 ID（支持完整链接或 ID）
-    const extractedId = extractIdFromUrl(newAppId);
-
-    console.log('[handleAddApp] Input:', newAppId);
-    console.log('[handleAddApp] Extracted ID:', extractedId);
-    console.log('[handleAddApp] API Key:', apiKey ? '已配置' : '未配置');
-
-    if (!extractedId) return;
+    console.log('handleAddApp called, newAppId:', newAppId, 'apiKey:', apiKey ? '已配置' : '未配置');
+    if (!newAppId.trim()) return;
     if (!apiKey) {
       alert('请先配置 API Key');
       return;
     }
 
     // 检查是否已存在
-    const existing = appService.getAppById(extractedId);
+    const existing = appService.getAppById(newAppId.trim());
     console.log('检查应用是否存在:', existing);
     if (existing) {
       console.log('应用已存在，无法添加');
@@ -215,13 +121,13 @@ const App: React.FC = () => {
     console.log('开始获取应用详情...');
     try {
       // 调用 API 获取应用详情
-      const detail = await getWebappDetail(apiKey, extractedId);
+      const detail = await getWebappDetail(apiKey, newAppId.trim());
       console.log('获取成功:', detail);
 
       // 创建带完整信息的 AppPoolItem
       const newApp: AppPoolItem = {
-        id: extractedId,
-        name: detail.webappName || `应用 ${extractedId.slice(-6)}`,
+        id: newAppId.trim(),
+        name: detail.webappName || `应用 ${newAppId.slice(-6)}`,
         intro: '',
         thumbnailUrl: detail.covers?.[0]?.thumbnailUri || detail.covers?.[0]?.url || '',
         owner: { name: '', avatar: '' },
@@ -296,19 +202,14 @@ const App: React.FC = () => {
   const openSettings = () => {
     setTempApiKey(apiKey);
     setTempAccessToken(accessToken);
-    setTempRefreshToken(refreshToken);
     setShowSettings(true);
   };
-
-
 
   const saveSettings = () => {
     setApiKey(tempApiKey);
     setAccessToken(tempAccessToken);
-    setRefreshToken(tempRefreshToken);
     appService.setApiKey(tempApiKey);
     appService.setAccessToken(tempAccessToken);
-    appService.setRefreshToken(tempRefreshToken);
     setShowSettings(false);
   };
 
@@ -334,18 +235,6 @@ const App: React.FC = () => {
     <div className="h-screen flex flex-col bg-[#0a0c10] text-slate-100 font-sans overflow-hidden">
       <TaskFloater />
 
-      {/* 更新通知 */}
-      <UpdateNotification />
-
-      {/* 关于对话框 */}
-      {showAboutDialog && (
-        <AboutDialog
-          onClose={() => setShowAboutDialog(false)}
-          onCheckUpdate={handleManualCheckUpdate}
-          isCheckingUpdate={isCheckingUpdate}
-        />
-      )}
-
       {/* ===== HEADER ===== */}
       <header className="h-14 bg-[#12151a] border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-20">
         <div className="flex items-center gap-3">
@@ -359,7 +248,10 @@ const App: React.FC = () => {
             <div className={`w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
             {apiKey ? 'API 已连接' : '未配置 API Key'}
           </div>
-          <button onClick={openSettings} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors">
+          <button onClick={() => setShowToolsModal(true)} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors" title="工具箱">
+            <Wrench className="w-5 h-5" />
+          </button>
+          <button onClick={openSettings} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors" title="设置">
             <Settings className="w-5 h-5" />
           </button>
         </div>
@@ -559,12 +451,12 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {appPool.map(app => (
                       <div
                         key={app.id}
                         onClick={() => handleSelectApp(app)}
-                        className="group relative bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-sm rounded-2xl overflow-hidden border border-white/10 hover:border-emerald-500/50 transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1"
+                        className="group relative bg-[#14171d] rounded-xl overflow-hidden border border-white/5 hover:border-brand-500/40 transition-all cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
                       >
                         <div className="aspect-[4/3] bg-slate-900 overflow-hidden relative">
                           {app.thumbnailUrl ? (
@@ -576,17 +468,17 @@ const App: React.FC = () => {
                           )}
 
                           {/* Action buttons */}
-                          <div className="absolute top-2.5 right-2.5 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
+                          <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={(e) => { e.stopPropagation(); handleToggleFavorite(app.id, e); }}
-                              className={`p-2.5 rounded-xl backdrop-blur-xl border transition-all duration-200 ${app.isLocalFavorite ? 'bg-yellow-500/90 border-yellow-400/50 text-white shadow-lg shadow-yellow-500/20' : 'bg-black/60 border-white/10 text-slate-300 hover:text-yellow-400 hover:border-yellow-400/30'}`}
+                              className={`p-2 rounded-lg backdrop-blur-md transition-colors ${app.isLocalFavorite ? 'bg-yellow-500/90 text-white' : 'bg-black/70 text-slate-300 hover:text-yellow-400'}`}
                               title={app.isLocalFavorite ? '取消收藏' : '收藏到左侧'}
                             >
                               <Star className={`w-4 h-4 ${app.isLocalFavorite ? 'fill-current' : ''}`} />
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm(app.id); }}
-                              className="p-2.5 rounded-xl bg-black/60 border border-white/10 text-slate-300 hover:text-red-400 hover:border-red-400/30 backdrop-blur-xl transition-all duration-200"
+                              className="p-2 rounded-lg bg-black/70 text-slate-300 hover:text-red-400 backdrop-blur-md transition-colors"
                               title="删除"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -595,18 +487,18 @@ const App: React.FC = () => {
 
                           {/* Favorite badge */}
                           {app.isLocalFavorite && (
-                            <div className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-gradient-to-r from-yellow-500 to-amber-500 text-white text-[10px] font-bold rounded-lg flex items-center gap-1 shadow-lg shadow-yellow-500/30">
+                            <div className="absolute top-2 left-2 px-2 py-1 bg-yellow-500/90 text-white text-[10px] font-medium rounded-md flex items-center gap-1">
                               <Star className="w-3 h-3 fill-current" />
                               已收藏
                             </div>
                           )}
                         </div>
 
-                        <div className="p-4">
-                          <h3 className="text-sm font-semibold text-white truncate mb-1.5 group-hover:text-emerald-400 transition-colors duration-200">{app.name}</h3>
+                        <div className="p-3">
+                          <h3 className="text-sm font-medium text-white truncate mb-1 group-hover:text-brand-400 transition-colors">{app.name}</h3>
                           <div className="flex items-center justify-between">
-                            <span className="text-[11px] text-slate-500 font-medium">{app.useCount || 0} 次使用</span>
-                            <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all duration-200" />
+                            <span className="text-[11px] text-slate-500">{app.useCount || 0} 次使用</span>
+                            <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 group-hover:translate-x-0.5 transition-all" />
                           </div>
                         </div>
                       </div>
@@ -667,23 +559,21 @@ const App: React.FC = () => {
 
       {/* ===== ADD APP MODAL ===== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-          <div className="w-full max-w-md bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl rounded-3xl p-6 border border-white/10 shadow-2xl shadow-emerald-500/10">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-white flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                  <PlusCircle className="w-5 h-5 text-white" />
-                </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-[#14171d] rounded-2xl p-5 border border-white/10 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-brand-400" />
                 手动添加应用
               </h2>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-                <X className="w-5 h-5 text-slate-400" />
+              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-white/10 rounded-lg">
+                <X className="w-4 h-4 text-slate-400" />
               </button>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
+                <label className="block text-sm text-slate-400 mb-2">
                   WebApp ID <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -691,23 +581,23 @@ const App: React.FC = () => {
                   value={newAppId}
                   onChange={(e) => setNewAppId(e.target.value)}
                   placeholder="例如: 2010287561301823489"
-                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 font-mono transition-all"
+                  className="w-full bg-black/40 border border-white/10 rounded-lg py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-brand-500/50 font-mono"
                 />
-                <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
-                  从应用页面 URL 中获取，如 /ai-detail/<span className="text-emerald-400">2010287561301823489</span>
+                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                  从应用页面 URL 中获取，如 /ai-detail/<span className="text-brand-400">2010287561301823489</span>
                   <br />
                   <span className="text-slate-600">输入后会自动获取应用名称和封面</span>
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t border-white/10">
-                <button onClick={() => setShowAddModal(false)} className="flex-1 py-3.5 text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
+              <div className="flex gap-3 pt-3 border-t border-white/5">
+                <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 text-sm text-slate-400 hover:text-white">
                   取消
                 </button>
                 <button
                   onClick={handleAddApp}
                   disabled={!newAppId.trim() || addingApp || !apiKey}
-                  className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all"
+                  className="flex-1 py-3 bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white font-medium rounded-lg flex items-center justify-center gap-2"
                   title={!apiKey ? '需要先配置 API Key' : ''}
                 >
                   {addingApp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -753,8 +643,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-
-
               <div>
                 <label className="flex items-center gap-1.5 text-sm text-slate-400 mb-2">
                   <Heart className="w-4 h-4" />
@@ -777,11 +665,6 @@ const App: React.FC = () => {
                 </p>
               </div>
 
-
-
-              {/* PayPal Payment (Web Only) */}
-              <PayPalButton className="mt-4" />
-
               <div className="flex gap-3 pt-3 border-t border-white/5">
                 <button onClick={() => setShowSettings(false)} className="flex-1 py-3 text-sm text-slate-400 hover:text-white">
                   取消
@@ -796,8 +679,14 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Update Notification */}
+      {/* Tools Modal */}
+      <ToolsModal isOpen={showToolsModal} onClose={() => setShowToolsModal(false)} />
 
+      {/* About Dialog */}
+      <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
+
+      {/* Update Notification */}
+      <UpdateNotification />
     </div>
   );
 };

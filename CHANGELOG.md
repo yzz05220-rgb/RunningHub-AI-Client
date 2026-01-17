@@ -1,19 +1,130 @@
 # 更新日志 / Changelog
 
-## v1.3.6 - 2026-01-17
+## v1.2.0 - 2026-01-17
 
-### 🐛 修复与优化
-- **修复自动更新检测**：
-  - 修复了客户端启动时无法检测到新版本的问题
-  - 增强了主进程与渲染进程的通信稳定性（Preload Script 优化）
-  - 添加了详细的更新检测日志
-- **关于对话框**：
-  - 新增"关于"菜单项
-  - 添加版本信息显示
-  - 支持手动检查更新
-- **开发者体验**：
-  - 在正式版中开启了开发者工具 (F12) 以便排查问题
-  - 修复了 Preload 脚本加载可能失败的问题
+### ✨ 新功能
+
+#### 工具函数库 (`utils/`)
+- **format.ts**: 统一的格式化函数
+  - `formatDuration(ms)`: 格式化时长为 mm:ss 格式
+  - `formatDurationChinese(ms)`: 格式化时长为中文描述
+  - `formatDate(timestamp)`: 格式化日期时间
+  - `formatTime(ts)`: 格式化完整时间
+  - `formatRelativeTime(timestamp)`: 格式化相对时间（如“5分钟前”）
+
+- **file.ts**: 文件相关工具函数
+  - `getFileType(url)`: 根据 URL 判断文件类型
+  - `isUrl(str)`: 判断字符串是否为 URL
+  - `getFileNameFromUrl(url)`: 从 URL 中提取文件名
+  - `getFileExtension(filename)`: 获取文件扩展名
+  - `formatFileSize(bytes)`: 格式化文件大小
+  - `downloadFile(url, filename)`: 下载文件
+
+- **error.ts**: 错误处理工具函数
+  - `parseHttpError(status, statusText)`: 解析 HTTP 错误为用户友好消息
+  - `parseTaskError(reason)`: 解析任务失败原因
+  - `parseError(error)`: 解析通用错误
+  - `formatErrorMessage(error)`: 格式化错误为显示字符串
+
+#### 自定义 Hooks (`hooks/`)
+- **useApiKeyValidation.ts**: API Key 验证 Hook
+  - 支持防抖自动验证
+  - 支持手动验证
+  - 返回验证状态、账户信息和错误信息
+
+- **useObjectUrl.ts**: ObjectURL 管理 Hook
+  - `useObjectUrl()`: 管理单个 ObjectURL
+  - `useObjectUrls()`: 管理多个 ObjectURL（key-value 形式）
+  - 自动清理，防止内存泄漏
+
+- **useKeyboardShortcuts.ts**: 快捷键管理 Hook
+  - 支持组合键（Ctrl/Cmd + Key）
+  - 自动处理输入框焦点
+  - 提供快捷键配置工厂函数
+  - 支持格式化快捷键显示
+
+#### 新组件 (`components/`)
+- **TaskHistoryItem.tsx**: 任务历史记录项组件
+  - 解决了原代码中在循环内使用 Hook 的问题
+  - 支持展开/折叠详情
+  - 支持删除单个结果或整个任务
+
+- **ErrorDisplay.tsx**: 统一的错误展示组件
+  - 支持三种样式：inline、card、toast
+  - 显示错误标题、消息和建议
+  - 支持重试和关闭操作
+  - 可展开查看详细错误信息
+
+- **ApiKeyInput.tsx**: API Key 输入组件
+  - 实时验证 API Key 有效性
+  - 显示/隐藏密码切换
+  - 显示账户信息（余额、运行中任务数）
+  - 验证状态指示器
+
+- **AppSearch.tsx**: 应用搜索组件
+  - 支持按名称和 ID 搜索
+  - 支持按时间、名称排序
+  - 提供 `useAppSearch` Hook 用于状态管理
+
+### 🔧 技术优化
+
+#### 类型安全 (`types.ts`)
+- 新增 `TaskFailedReason` 接口
+- 新增 `TaskOutputResponse` 接口
+- 新增 `FileType` 类型
+- 新增 `UserFriendlyError` 接口
+- 扩展 `BackgroundTask` 接口，添加 `apiKey`、`webappId`、`queuePosition` 字段
+
+#### API 服务 (`services/api.ts`)
+- 添加 `fetchWithRetry` 函数，支持自动重试
+  - 服务器错误（5xx）自动重试
+  - 网络错误自动重试
+  - 指数退避延迟
+- 改进错误处理，使用 `parseHttpError` 生成用户友好消息
+- 新增 `validateApiKey` 函数
+- 移除所有 `any` 类型，使用明确的类型定义
+
+#### 任务状态管理 (`stores/taskStore.ts`)
+- 移除所有 `as any` 类型断言
+- 添加定时器存储和清理机制，防止内存泄漏
+- 改进错误处理，使用类型安全的方式
+- 任务取消时正确清理定时器
+
+### 🐛 修复
+
+- **StepEditor.tsx Hook 违规**: 原代码在 `map` 循环中使用 `useState`，违反 React Hooks 规则。通过提取 `TaskHistoryItem` 组件解决。
+- **内存泄漏**: 
+  - 添加 `useObjectUrl` Hook 自动管理 ObjectURL 生命周期
+  - `taskStore` 中添加定时器清理逻辑
+- **类型不安全**: 移除多处 `any` 类型断言，使用明确的类型定义
+
+### 📝 文档
+
+- 新增 `CODE_REVIEW_REPORT.md`: 完整的代码审查报告
+
+### 📁 新增文件
+
+```
+utils/
+├── index.ts
+├── format.ts
+├── file.ts
+└── error.ts
+
+hooks/
+├── index.ts
+├── useApiKeyValidation.ts
+├── useObjectUrl.ts
+└── useKeyboardShortcuts.ts
+
+components/
+├── TaskHistoryItem.tsx
+├── ErrorDisplay.tsx
+├── ApiKeyInput.tsx
+└── AppSearch.tsx
+```
+
+---
 
 ## v1.1.0 - 2026-01-16
 

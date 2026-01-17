@@ -1,7 +1,6 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { BackgroundTask, NodeInfo } from '../types';
+import { BackgroundTask, NodeInfo, TaskOutput } from '../types';
 import { submitTask, queryTaskOutputs, cancelTask as cancelTaskApi } from '../services/api';
 
 // RunningHub API 状态码
@@ -37,6 +36,9 @@ interface TaskState {
     startTask: (task: BackgroundTask) => void;
 }
 
+// 定时器存储，用于清理
+const taskTimers: Map<string, { pollInterval?: ReturnType<typeof setInterval>; timeout?: ReturnType<typeof setTimeout> }> = new Map();
+
 export const useTaskStore = create<TaskState>()(
     persist(
         (set, get) => ({
@@ -64,10 +66,19 @@ export const useTaskStore = create<TaskState>()(
 
             // 内部方法：实际开始执行任务
             startTask: async (task: BackgroundTask) => {
-                const { params } = task;
-                const apiKey = (task as any).apiKey;
-                const webappId = (task as any).webappId;
+                const { params, apiKey, webappId } = task;
                 const taskId = task.id;
+
+                // 检查必要参数
+                if (!apiKey || !webappId || !params) {
+                    console.error('[Task] Missing required parameters');
+                    get().updateTask(taskId, {
+                        status: 'FAILED',
+                        error: '任务参数不完整',
+                        endTime: Date.now()
+                    });
+                    return;
+                }
 
                 set((state) => ({
                     runningCount: state.runningCount + 1,
@@ -76,12 +87,20 @@ export const useTaskStore = create<TaskState>()(
                 get().updateTask(taskId, { status: 'RUNNING', progress: 10, startTime: Date.now() });
 
                 const onTaskComplete = () => {
+                    // 清理定时器
+                    const timers = taskTimers.get(taskId);
+                    if (timers) {
+                        if (timers.pollInterval) clearInterval(timers.pollInterval);
+                        if (timers.timeout) clearTimeout(timers.timeout);
+                        taskTimers.delete(taskId);
+                    }
+                    
                     set(s => ({ runningCount: s.runningCount - 1 }));
                     setTimeout(() => get().processNextInQueue(), 500);
                 };
 
                 try {
-                    const submission = await submitTask(apiKey, webappId, params!);
+                    const submission = await submitTask(apiKey, webappId, params);
                     const remoteTaskId = submission.taskId;
 
                     console.log('[Task] Submitted, remoteTaskId:', remoteTaskId);
@@ -96,51 +115,10 @@ export const useTaskStore = create<TaskState>()(
 
                             switch (result.code) {
                                 case API_CODE.SUCCESS:
-                                    clearInterval(pollInterval);
-
-                                    // Normalize result.data to ensure {fileUrl: string}[] format
-                                    let normalizedResults: { fileUrl: string, fileType?: string }[] = [];
-                                    const rawData = result.data;
-
-                                    if (Array.isArray(rawData)) {
-                                        normalizedResults = rawData.map((item: any) => {
-                                            // Case 1: Already correct format {fileUrl: "..."}
-                                            if (item && typeof item.fileUrl === 'string') {
-                                                return { fileUrl: item.fileUrl, fileType: item.fileType };
-                                            }
-                                            // Case 2: Item is a string URL directly
-                                            if (typeof item === 'string') {
-                                                return { fileUrl: item };
-                                            }
-                                            // Case 3: Item has url instead of fileUrl
-                                            if (item && typeof item.url === 'string') {
-                                                return { fileUrl: item.url, fileType: item.fileType || item.type };
-                                            }
-                                            // Case 4: Skip invalid items
-                                            return null;
-                                        }).filter(Boolean) as { fileUrl: string, fileType?: string }[];
-                                    } else if (rawData && typeof rawData === 'object') {
-                                        // Case 5: Single object with outputs array
-                                        if (Array.isArray(rawData.outputs)) {
-                                            normalizedResults = rawData.outputs.map((item: any) => {
-                                                if (typeof item === 'string') return { fileUrl: item };
-                                                if (item && typeof item.fileUrl === 'string') return item;
-                                                if (item && typeof item.url === 'string') return { fileUrl: item.url };
-                                                return null;
-                                            }).filter(Boolean);
-                                        }
-                                        // Case 6: Single object with fileUrl
-                                        else if (typeof rawData.fileUrl === 'string') {
-                                            normalizedResults = [{ fileUrl: rawData.fileUrl }];
-                                        }
-                                    }
-
-                                    console.log('[Task] Normalized results:', normalizedResults);
-
                                     get().updateTask(taskId, {
                                         status: 'SUCCESS',
                                         progress: 100,
-                                        result: normalizedResults,
+                                        result: result.data as TaskOutput[],
                                         endTime: Date.now()
                                     });
                                     onTaskComplete();
@@ -156,23 +134,18 @@ export const useTaskStore = create<TaskState>()(
 
                                 case API_CODE.FAILED:
                                 case API_CODE.QUEUE_MAXED:
-                                    clearInterval(pollInterval);
-                                    let errorMsg = typeof result.msg === 'string' ? result.msg : '任务执行失败';
-                                    if (result.data?.failedReason) {
-                                        const reason = result.data.failedReason;
-                                        const exMsg = reason.exception_message || reason.exception_type;
-                                        if (typeof exMsg === 'string') {
-                                            errorMsg = exMsg;
-                                        } else if (exMsg) {
-                                            errorMsg = JSON.stringify(exMsg);
-                                        }
-                                        if (reason.node_name && typeof reason.node_name === 'string') {
+                                    let errorMsg = result.msg || '任务执行失败';
+                                    const failedData = result.data as { failedReason?: { exception_message?: string; exception_type?: string; node_name?: string } };
+                                    if (failedData?.failedReason) {
+                                        const reason = failedData.failedReason;
+                                        errorMsg = reason.exception_message || reason.exception_type || errorMsg;
+                                        if (reason.node_name) {
                                             errorMsg = `[${reason.node_name}] ${errorMsg}`;
                                         }
                                     }
                                     get().updateTask(taskId, {
                                         status: 'FAILED',
-                                        error: String(errorMsg),
+                                        error: errorMsg,
                                         endTime: Date.now()
                                     });
                                     onTaskComplete();
@@ -183,8 +156,7 @@ export const useTaskStore = create<TaskState>()(
                         }
                     }, 3000);
 
-                    setTimeout(() => {
-                        clearInterval(pollInterval);
+                    const timeout = setTimeout(() => {
                         const current = get().tasks.find(t => t.id === taskId);
                         if (current && current.status === 'RUNNING') {
                             get().updateTask(taskId, {
@@ -196,11 +168,15 @@ export const useTaskStore = create<TaskState>()(
                         }
                     }, 3600000);
 
-                } catch (e: any) {
+                    // 存储定时器引用
+                    taskTimers.set(taskId, { pollInterval, timeout });
+
+                } catch (e: unknown) {
                     console.error('[Task] Submission Failed:', e);
+                    const errorMessage = e instanceof Error ? e.message : '提交任务失败';
                     get().updateTask(taskId, {
                         status: 'FAILED',
-                        error: e.message || '提交任务失败',
+                        error: errorMessage,
                         endTime: Date.now()
                     });
                     onTaskComplete();
@@ -226,7 +202,7 @@ export const useTaskStore = create<TaskState>()(
                     apiKey,
                     webappId,
                     queuePosition: runningCount >= MAX_CONCURRENT ? queuedCount + 1 : undefined,
-                } as any;
+                };
 
                 set((state) => ({
                     tasks: [newTask, ...state.tasks],
@@ -252,6 +228,15 @@ export const useTaskStore = create<TaskState>()(
 
             removeTask: (taskId) => {
                 const task = get().tasks.find(t => t.id === taskId);
+                
+                // 清理定时器
+                const timers = taskTimers.get(taskId);
+                if (timers) {
+                    if (timers.pollInterval) clearInterval(timers.pollInterval);
+                    if (timers.timeout) clearTimeout(timers.timeout);
+                    taskTimers.delete(taskId);
+                }
+                
                 set((state) => ({
                     tasks: state.tasks.filter((t) => t.id !== taskId),
                 }));
@@ -265,10 +250,18 @@ export const useTaskStore = create<TaskState>()(
                 const task = get().tasks.find(t => t.id === taskId);
                 if (!task) return;
 
+                // 清理定时器
+                const timers = taskTimers.get(taskId);
+                if (timers) {
+                    if (timers.pollInterval) clearInterval(timers.pollInterval);
+                    if (timers.timeout) clearTimeout(timers.timeout);
+                    taskTimers.delete(taskId);
+                }
+
                 // 如果有远程 taskId，调用 API 取消
-                if (task.remoteTaskId && (task as any).apiKey) {
+                if (task.remoteTaskId && task.apiKey) {
                     try {
-                        await cancelTaskApi((task as any).apiKey, task.remoteTaskId);
+                        await cancelTaskApi(task.apiKey, task.remoteTaskId);
                         console.log('[Task] Cancelled:', task.remoteTaskId);
                     } catch (e) {
                         console.warn('[Task] Cancel API failed:', e);
