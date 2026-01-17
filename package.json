@@ -2,7 +2,7 @@
   "name": "runninghub-ai-client",
   "productName": "RunningHub AI",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.4.3",
   "main": "electron/main.js",
   "description": "RunningHub AI Client - 桌面端应用",
   "author": "yzz05220-rgb",
@@ -58,7 +58,7 @@
           ]
         }
       ],
-      "icon": "public/logo.png"
+      "icon": "public/icon.ico"
     },
     "nsis": {
       "oneClick": false,
