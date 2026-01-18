@@ -4,22 +4,32 @@ import StepEditor from './components/StepEditor';
 import StepResult from './components/StepResult';
 import TaskFloater from './components/TaskFloater';
 import { appService, AppPoolItem } from './services/appService';
-import { getNodeList, getFavoriteApps, getWebappDetail } from './services/api';
+import { getNodeList, getFavoriteApps, getWebappDetail, getAccountInfo } from './services/api';
 import { useTaskStore } from './stores/taskStore';
 import {
   Loader2, AlertCircle, Settings, ArrowLeft, RefreshCw,
-  Zap, Heart, ChevronRight, Key, Save, Eye, EyeOff, X,
+  Zap, Heart, ChevronRight, ChevronLeft, Key, Save, Eye, EyeOff, X,
   ExternalLink, Maximize2, Minimize2, History, Sparkles,
-  Grid3X3, Trash2, Star, Plus, Check, PlusCircle, Wrench
+  Grid3X3, Trash2, Star, Plus, Check, PlusCircle, Wrench, FolderOpen, Coins,
+  Layers, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
-import ToolsModal from './components/ToolsModal';
+import { PayPalButton } from './components/PayPalButton';
 import UpdateNotification from './components/UpdateNotification';
-import AboutDialog from './components/AboutDialog';
+import { TauriUpdateNotification } from './components/TauriUpdateNotification';
+import { AboutDialog } from './components/AboutDialog';
+import { ToolsModal } from './components/ToolsModal';
+import { isElectronEnvironment } from './utils/envDetection';
+
+// 检测是否为 Tauri 环境
+const isTauriEnvironment = typeof window !== 'undefined' && '__TAURI__' in window;
+import packageInfo from './package.json';
+import { APP_CONFIG } from './src/config';
 
 const App: React.FC = () => {
   // --- Global Settings ---
   const [apiKey, setApiKey] = useState('');
   const [accessToken, setAccessToken] = useState('');
+  const [refreshToken, setRefreshToken] = useState('');
 
   // --- App Pool (中间区域) ---
   const [appPool, setAppPool] = useState<AppPoolItem[]>([]);
@@ -39,15 +49,23 @@ const App: React.FC = () => {
 
   // --- UI State ---
   const [showSettings, setShowSettings] = useState(false);
-  const [showToolsModal, setShowToolsModal] = useState(false);
-  const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState('');
   const [tempAccessToken, setTempAccessToken] = useState('');
+  const [tempRefreshToken, setTempRefreshToken] = useState('');
+  const [tempDownloadPath, setTempDownloadPath] = useState('');
+  const [tempMaxConcurrent, setTempMaxConcurrent] = useState(3);
+  const [tempAutoSave, setTempAutoSave] = useState(false);
+  const [tempAutoDecode, setTempAutoDecode] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showAccessToken, setShowAccessToken] = useState(false);
+  const [showRefreshToken, setShowRefreshToken] = useState(false);
+  const [defaultDownloadPath, setDefaultDownloadPath] = useState('');
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   // --- Add App Modal ---
   const [newAppId, setNewAppId] = useState('');
@@ -57,25 +75,113 @@ const App: React.FC = () => {
   // Task Store
   const { tasks } = useTaskStore();
 
+  // --- Auto Update ---
+  // Managed by UpdateNotification component
+  const [showAboutDialog, setShowAboutDialog] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // --- RH 币余额 ---
+  const [rhCoins, setRhCoins] = useState<string | null>(null);
+  const [loadingCoins, setLoadingCoins] = useState(false);
+
   // --- Init ---
   useEffect(() => {
     document.documentElement.classList.add('dark');
     setApiKey(appService.getApiKey());
     setAccessToken(appService.getAccessToken());
+    setRefreshToken(appService.getRefreshToken());
     refreshData();
 
-    // 监听 Electron 关于对话框事件
-    if ((window as any).electronAPI) {
-      const unbindAbout = (window as any).electronAPI.onShowAbout(() => {
+    // 监听 Electron 登录回调
+    if ((window as any).electronAPI?.onLoginSuccess) {
+      const cleanup = (window as any).electronAPI.onLoginSuccess((_event: any, tokens: any) => {
+        console.log('Login success, received tokens:', tokens);
+        if (tokens.accessToken) {
+          setAccessToken(tokens.accessToken);
+          setTempAccessToken(tokens.accessToken);
+          appService.setAccessToken(tokens.accessToken);
+        }
+        if (tokens.refreshToken) {
+          setRefreshToken(tokens.refreshToken);
+          setTempRefreshToken(tokens.refreshToken);
+          appService.setRefreshToken(tokens.refreshToken);
+        }
+        setShowSettings(true); // 确保设置窗口打开以便用户看到
+      });
+      return () => cleanup();
+    }
+
+    // 监听显示关于对话框事件
+    if ((window as any).electronAPI?.onShowAbout) {
+      const cleanup = (window as any).electronAPI.onShowAbout(() => {
         setShowAboutDialog(true);
       });
-      return () => unbindAbout();
+      return () => cleanup?.();
     }
   }, []);
+
+  // ... (refreshData, extractIdFromUrl, handleSyncFromRH, handleAddApp, etc. remain the same) ...
+
+  // --- Manual Update Check ---
+  const handleManualCheckUpdate = () => {
+    if ((window as any).electronAPI?.checkUpdate) {
+      console.log('[Manual Update Check] Sending check request...');
+      setIsCheckingUpdate(true);
+      (window as any).electronAPI.checkUpdate();
+
+      // Listen for result once
+      const api = (window as any).electronAPI;
+      const offSuccess = api.onUpdateAvailable(() => {
+        setIsCheckingUpdate(false);
+        setShowAboutDialog(false); // UpdateNotification will show up
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+      const offNotAvailable = api.onUpdateNotAvailable(() => {
+        setIsCheckingUpdate(false);
+        alert('当前已是最新版本');
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+      const offError = api.onUpdateError((msg: string) => {
+        setIsCheckingUpdate(false);
+        alert('检查更新失败: ' + msg);
+        offSuccess();
+        offError();
+        offNotAvailable();
+      });
+    } else {
+      alert('手动检查仅在客户端环境可用');
+    }
+  };
+
+
 
   const refreshData = () => {
     setAppPool(appService.getAppPool());
     setLocalFavorites(appService.getLocalFavorites());
+  };
+
+  // --- Extract ID from URL or plain ID ---
+  const extractIdFromUrl = (input: string): string => {
+    const trimmed = input.trim();
+
+    // 匹配 https://www.runninghub.cn/ai-detail/2012024954291757057
+    const urlMatch = trimmed.match(/ai-detail\/(\d+)/);
+    if (urlMatch) {
+      return urlMatch[1];
+    }
+
+    // 匹配查询参数 webappId=xxx
+    const queryMatch = trimmed.match(/webappId=(\d+)/);
+    if (queryMatch) {
+      return queryMatch[1];
+    }
+
+    // 直接返回（应该就是 ID）
+    return trimmed;
   };
 
   // --- Sync from RH (去重添加) ---
@@ -101,15 +207,21 @@ const App: React.FC = () => {
 
   // --- Add App Manually ---
   const handleAddApp = async () => {
-    console.log('handleAddApp called, newAppId:', newAppId, 'apiKey:', apiKey ? '已配置' : '未配置');
-    if (!newAppId.trim()) return;
+    // 自动提取 ID（支持完整链接或 ID）
+    const extractedId = extractIdFromUrl(newAppId);
+
+    console.log('[handleAddApp] Input:', newAppId);
+    console.log('[handleAddApp] Extracted ID:', extractedId);
+    console.log('[handleAddApp] API Key:', apiKey ? '已配置' : '未配置');
+
+    if (!extractedId) return;
     if (!apiKey) {
       alert('请先配置 API Key');
       return;
     }
 
     // 检查是否已存在
-    const existing = appService.getAppById(newAppId.trim());
+    const existing = appService.getAppById(extractedId);
     console.log('检查应用是否存在:', existing);
     if (existing) {
       console.log('应用已存在，无法添加');
@@ -121,13 +233,13 @@ const App: React.FC = () => {
     console.log('开始获取应用详情...');
     try {
       // 调用 API 获取应用详情
-      const detail = await getWebappDetail(apiKey, newAppId.trim());
+      const detail = await getWebappDetail(apiKey, extractedId);
       console.log('获取成功:', detail);
 
       // 创建带完整信息的 AppPoolItem
       const newApp: AppPoolItem = {
-        id: newAppId.trim(),
-        name: detail.webappName || `应用 ${newAppId.slice(-6)}`,
+        id: extractedId,
+        name: detail.webappName || `应用 ${extractedId.slice(-6)}`,
         intro: '',
         thumbnailUrl: detail.covers?.[0]?.thumbnailUri || detail.covers?.[0]?.url || '',
         owner: { name: '', avatar: '' },
@@ -202,16 +314,59 @@ const App: React.FC = () => {
   const openSettings = () => {
     setTempApiKey(apiKey);
     setTempAccessToken(accessToken);
+    setTempRefreshToken(refreshToken);
+    setTempDownloadPath(appService.getDefaultDownloadPath());
+    setTempMaxConcurrent(appService.getMaxConcurrent());
+    setTempAutoSave(appService.getAutoSaveEnabled());
+    setTempAutoDecode(appService.getAutoDecodeEnabled());
     setShowSettings(true);
+  };
+
+  const handleSelectDownloadFolder = async () => {
+    if (isElectronEnvironment() && (window as any).electronAPI?.selectDownloadFolder) {
+      const path = await (window as any).electronAPI.selectDownloadFolder();
+      if (path) {
+        setTempDownloadPath(path);
+      }
+    }
   };
 
   const saveSettings = () => {
     setApiKey(tempApiKey);
     setAccessToken(tempAccessToken);
+    setRefreshToken(tempRefreshToken);
+    setDefaultDownloadPath(tempDownloadPath);
     appService.setApiKey(tempApiKey);
     appService.setAccessToken(tempAccessToken);
+    appService.setRefreshToken(tempRefreshToken);
+    appService.setDefaultDownloadPath(tempDownloadPath);
+    appService.setMaxConcurrent(tempMaxConcurrent);
+    appService.setAutoSaveEnabled(tempAutoSave);
+    appService.setAutoDecodeEnabled(tempAutoDecode);
     setShowSettings(false);
   };
+
+  // 获取 RH 币余额
+  const fetchRhCoins = async () => {
+    if (!apiKey) return;
+    setLoadingCoins(true);
+    try {
+      const info = await getAccountInfo(apiKey);
+      setRhCoins(info.remainCoins);
+    } catch (e) {
+      console.error('Failed to fetch RH coins:', e);
+      setRhCoins(null);
+    } finally {
+      setLoadingCoins(false);
+    }
+  };
+
+  // 侧边栏展开时自动获取余额
+  useEffect(() => {
+    if (historyExpanded && apiKey && rhCoins === null) {
+      fetchRhCoins();
+    }
+  }, [historyExpanded, apiKey]);
 
   // Map tasks to history
   const historyItems: HistoryItem[] = tasks
@@ -235,6 +390,22 @@ const App: React.FC = () => {
     <div className="h-screen flex flex-col bg-[#0a0c10] text-slate-100 font-sans overflow-hidden">
       <TaskFloater />
 
+      {/* 更新通知 */}
+      {/* 根据环境渲染不同的更新组件 */}
+      {isTauriEnvironment ? <TauriUpdateNotification /> : <UpdateNotification />}
+
+      {/* 关于对话框 */}
+      {showAboutDialog && (
+        <AboutDialog
+          onClose={() => setShowAboutDialog(false)}
+          onCheckUpdate={handleManualCheckUpdate}
+          isCheckingUpdate={isCheckingUpdate}
+        />
+      )}
+
+      {/* 工具箱模态框 */}
+      <ToolsModal isOpen={showTools} onClose={() => setShowTools(false)} />
+
       {/* ===== HEADER ===== */}
       <header className="h-14 bg-[#12151a] border-b border-white/5 flex items-center justify-between px-5 shrink-0 z-20">
         <div className="flex items-center gap-3">
@@ -248,10 +419,19 @@ const App: React.FC = () => {
             <div className={`w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
             {apiKey ? 'API 已连接' : '未配置 API Key'}
           </div>
-          <button onClick={() => setShowToolsModal(true)} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors" title="工具箱">
+          <a
+            href="https://www.runninghub.cn/?inviteCode=rh-v1383"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 rounded-full text-xs font-medium text-emerald-400 transition-colors"
+          >
+            <Sparkles className="w-3 h-3" />
+            点这里注册获取RH币
+          </a>
+          <button onClick={() => setShowTools(true)} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors" title="工具箱">
             <Wrench className="w-5 h-5" />
           </button>
-          <button onClick={openSettings} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors" title="设置">
+          <button onClick={openSettings} className="p-2 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white transition-colors">
             <Settings className="w-5 h-5" />
           </button>
         </div>
@@ -451,59 +631,126 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                    {appPool.map(app => (
-                      <div
-                        key={app.id}
-                        onClick={() => handleSelectApp(app)}
-                        className="group relative bg-[#14171d] rounded-xl overflow-hidden border border-white/5 hover:border-brand-500/40 transition-all cursor-pointer hover:shadow-lg hover:-translate-y-0.5"
-                      >
-                        <div className="aspect-[4/3] bg-slate-900 overflow-hidden relative">
-                          {app.thumbnailUrl ? (
-                            <img src={app.thumbnailUrl} alt={app.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
-                              <Zap className="w-12 h-12 text-slate-700" />
-                            </div>
-                          )}
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5">
+                      {appPool.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE).map(app => (
+                        <div
+                          key={app.id}
+                          onClick={() => handleSelectApp(app)}
+                          className="group relative bg-gradient-to-br from-white/[0.08] to-white/[0.02] backdrop-blur-sm rounded-2xl overflow-hidden border border-white/10 hover:border-emerald-500/50 transition-all duration-300 cursor-pointer hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1"
+                        >
+                          <div className="aspect-[4/3] bg-slate-900 overflow-hidden relative">
+                            {app.thumbnailUrl ? (
+                              <img src={app.thumbnailUrl} alt={app.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
+                                <Zap className="w-12 h-12 text-slate-700" />
+                              </div>
+                            )}
 
-                          {/* Action buttons */}
-                          <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleToggleFavorite(app.id, e); }}
-                              className={`p-2 rounded-lg backdrop-blur-md transition-colors ${app.isLocalFavorite ? 'bg-yellow-500/90 text-white' : 'bg-black/70 text-slate-300 hover:text-yellow-400'}`}
-                              title={app.isLocalFavorite ? '取消收藏' : '收藏到左侧'}
-                            >
-                              <Star className={`w-4 h-4 ${app.isLocalFavorite ? 'fill-current' : ''}`} />
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(app.id); }}
-                              className="p-2 rounded-lg bg-black/70 text-slate-300 hover:text-red-400 backdrop-blur-md transition-colors"
-                              title="删除"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {/* Action buttons */}
+                            <div className="absolute top-2.5 right-2.5 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-1 group-hover:translate-y-0">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleToggleFavorite(app.id, e); }}
+                                className={`p-2.5 rounded-xl backdrop-blur-xl border transition-all duration-200 ${app.isLocalFavorite ? 'bg-yellow-500/90 border-yellow-400/50 text-white shadow-lg shadow-yellow-500/20' : 'bg-black/60 border-white/10 text-slate-300 hover:text-yellow-400 hover:border-yellow-400/30'}`}
+                                title={app.isLocalFavorite ? '取消收藏' : '收藏到左侧'}
+                              >
+                                <Star className={`w-4 h-4 ${app.isLocalFavorite ? 'fill-current' : ''}`} />
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteConfirm(app.id); }}
+                                className="p-2.5 rounded-xl bg-black/60 border border-white/10 text-slate-300 hover:text-red-400 hover:border-red-400/30 backdrop-blur-xl transition-all duration-200"
+                                title="删除"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+
+                            {/* Favorite badge */}
+                            {app.isLocalFavorite && (
+                              <div className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-gradient-to-r from-yellow-500 to-amber-500 text-white text-[10px] font-bold rounded-lg flex items-center gap-1 shadow-lg shadow-yellow-500/30">
+                                <Star className="w-3 h-3 fill-current" />
+                                已收藏
+                              </div>
+                            )}
                           </div>
 
-                          {/* Favorite badge */}
-                          {app.isLocalFavorite && (
-                            <div className="absolute top-2 left-2 px-2 py-1 bg-yellow-500/90 text-white text-[10px] font-medium rounded-md flex items-center gap-1">
-                              <Star className="w-3 h-3 fill-current" />
-                              已收藏
+                          <div className="p-4">
+                            <h3 className="text-sm font-semibold text-white truncate mb-1.5 group-hover:text-emerald-400 transition-colors duration-200">{app.name}</h3>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] text-slate-500 font-medium">{app.useCount || 0} 次使用</span>
+                              <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all duration-200" />
                             </div>
-                          )}
-                        </div>
-
-                        <div className="p-3">
-                          <h3 className="text-sm font-medium text-white truncate mb-1 group-hover:text-brand-400 transition-colors">{app.name}</h3>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] text-slate-500">{app.useCount || 0} 次使用</span>
-                            <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-brand-400 group-hover:translate-x-0.5 transition-all" />
                           </div>
                         </div>
+                      ))}
+                    </div>
+
+                    {/* 分页控件 */}
+                    {appPool.length > ITEMS_PER_PAGE && (
+                      <div className="flex items-center justify-center gap-2 pt-6 pb-2">
+                        <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1}
+                          className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="首页"
+                        >
+                          <ChevronsLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                          className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="上一页"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* 页码 */}
+                        {(() => {
+                          const totalPages = Math.ceil(appPool.length / ITEMS_PER_PAGE);
+                          const pages: (number | string)[] = [];
+                          for (let i = 1; i <= totalPages; i++) {
+                            if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+                              pages.push(i);
+                            } else if (pages[pages.length - 1] !== '...') {
+                              pages.push('...');
+                            }
+                          }
+                          return pages.map((page, idx) => (
+                            page === '...' ? (
+                              <span key={`ellipsis-${idx}`} className="px-2 text-slate-500">...</span>
+                            ) : (
+                              <button
+                                key={page}
+                                onClick={() => setCurrentPage(page as number)}
+                                className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${currentPage === page ? 'bg-brand-500 text-white' : 'hover:bg-white/10 text-slate-400 hover:text-white'}`}
+                              >
+                                {page}
+                              </button>
+                            )
+                          ));
+                        })()}
+
+                        <button
+                          onClick={() => setCurrentPage(p => Math.min(Math.ceil(appPool.length / ITEMS_PER_PAGE), p + 1))}
+                          disabled={currentPage >= Math.ceil(appPool.length / ITEMS_PER_PAGE)}
+                          className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="下一页"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(Math.ceil(appPool.length / ITEMS_PER_PAGE))}
+                          disabled={currentPage >= Math.ceil(appPool.length / ITEMS_PER_PAGE)}
+                          className="p-2 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                          title="末页"
+                        >
+                          <ChevronsRight className="w-4 h-4" />
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -512,6 +759,39 @@ const App: React.FC = () => {
 
         {/* ===== RIGHT SIDEBAR - 历史结果 ===== */}
         <aside className={`bg-[#0f1116] border-l border-white/5 flex flex-col shrink-0 transition-all duration-300 ${historyExpanded ? 'w-[420px]' : 'w-72'}`}>
+          {/* RH 币余额显示 (展开时显示) */}
+          {historyExpanded && apiKey && (
+            <div className="px-4 py-3 border-b border-white/5 bg-gradient-to-r from-emerald-500/5 to-teal-500/5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
+                    <Coins className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">RH 币余额</p>
+                    <p className="text-sm font-bold text-white">
+                      {loadingCoins ? (
+                        <Loader2 className="w-4 h-4 animate-spin inline" />
+                      ) : rhCoins !== null ? (
+                        <span className="text-amber-400">{parseFloat(rhCoins).toLocaleString()}</span>
+                      ) : (
+                        <span className="text-slate-500">--</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={fetchRhCoins}
+                  disabled={loadingCoins}
+                  className="p-1.5 hover:bg-white/10 rounded text-slate-500 hover:text-white transition-colors disabled:opacity-50"
+                  title="刷新余额"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingCoins ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <History className="w-4 h-4 text-slate-500" />
@@ -559,21 +839,23 @@ const App: React.FC = () => {
 
       {/* ===== ADD APP MODAL ===== */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-[#14171d] rounded-2xl p-5 border border-white/10 shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <PlusCircle className="w-5 h-5 text-brand-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-md bg-gradient-to-br from-slate-900/95 to-slate-800/95 backdrop-blur-xl rounded-3xl p-6 border border-white/10 shadow-2xl shadow-emerald-500/10">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-white flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                  <PlusCircle className="w-5 h-5 text-white" />
+                </div>
                 手动添加应用
               </h2>
-              <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-white/10 rounded-lg">
-                <X className="w-4 h-4 text-slate-400" />
+              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                <X className="w-5 h-5 text-slate-400" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
-                <label className="block text-sm text-slate-400 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   WebApp ID <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -581,23 +863,23 @@ const App: React.FC = () => {
                   value={newAppId}
                   onChange={(e) => setNewAppId(e.target.value)}
                   placeholder="例如: 2010287561301823489"
-                  className="w-full bg-black/40 border border-white/10 rounded-lg py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-brand-500/50 font-mono"
+                  className="w-full bg-black/40 border border-white/10 rounded-xl py-3.5 px-4 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 font-mono transition-all"
                 />
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                  从应用页面 URL 中获取，如 /ai-detail/<span className="text-brand-400">2010287561301823489</span>
+                <p className="text-xs text-slate-500 mt-2.5 leading-relaxed">
+                  从应用页面 URL 中获取，如 /ai-detail/<span className="text-emerald-400">2010287561301823489</span>
                   <br />
                   <span className="text-slate-600">输入后会自动获取应用名称和封面</span>
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-3 border-t border-white/5">
-                <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 text-sm text-slate-400 hover:text-white">
+              <div className="flex gap-3 pt-4 border-t border-white/10">
+                <button onClick={() => setShowAddModal(false)} className="flex-1 py-3.5 text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all">
                   取消
                 </button>
                 <button
                   onClick={handleAddApp}
                   disabled={!newAppId.trim() || addingApp || !apiKey}
-                  className="flex-1 py-3 bg-brand-500 hover:bg-brand-400 disabled:opacity-50 text-white font-medium rounded-lg flex items-center justify-center gap-2"
+                  className="flex-1 py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:opacity-50 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all"
                   title={!apiKey ? '需要先配置 API Key' : ''}
                 >
                   {addingApp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -643,6 +925,8 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+
+
               <div>
                 <label className="flex items-center gap-1.5 text-sm text-slate-400 mb-2">
                   <Heart className="w-4 h-4" />
@@ -665,6 +949,86 @@ const App: React.FC = () => {
                 </p>
               </div>
 
+              {/* 默认下载路径 (仅 Electron 环境显示) */}
+              {isElectronEnvironment() && (
+                <div>
+                  <label className="flex items-center gap-1.5 text-sm text-slate-400 mb-2">
+                    <FolderOpen className="w-4 h-4" />
+                    默认保存路径 <span className="text-slate-600">(可选)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={tempDownloadPath}
+                      readOnly
+                      placeholder="未设置（每次下载时选择）"
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg py-3 px-4 text-sm text-white placeholder-slate-600 focus:outline-none cursor-default"
+                    />
+                    <button
+                      onClick={handleSelectDownloadFolder}
+                      className="px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      <FolderOpen className="w-4 h-4" />
+                      选择
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                    设置后，每个任务完成时会自动将结果保存到此目录
+                  </p>
+                  {tempDownloadPath && (
+                    <button
+                      onClick={() => setTempDownloadPath('')}
+                      className="text-xs text-red-400 hover:text-red-300 mt-1"
+                    >
+                      清除默认路径
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* 自动保存开关 (仅设置了路径时有效) */}
+              {isElectronEnvironment() && tempDownloadPath && (
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <label className="text-sm text-slate-300">启用自动保存</label>
+                    <p className="text-xs text-slate-500">任务完成时自动保存到默认路径</p>
+                  </div>
+                  <button
+                    onClick={() => setTempAutoSave(!tempAutoSave)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${tempAutoSave ? 'bg-emerald-500' : 'bg-white/20'}`}
+                  >
+                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${tempAutoSave ? 'left-6' : 'left-1'}`} />
+                  </button>
+                </div>
+              )}
+
+              {/* 并发数量设置 */}
+              <div>
+                <label className="flex items-center gap-1.5 text-sm text-slate-400 mb-2">
+                  <Layers className="w-4 h-4" />
+                  并发任务数量
+                </label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={tempMaxConcurrent}
+                    onChange={(e) => setTempMaxConcurrent(parseInt(e.target.value))}
+                    className="flex-1 h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-brand-500"
+                  />
+                  <span className="text-lg font-bold text-white w-8 text-center">{tempMaxConcurrent}</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-2 leading-relaxed space-y-1">
+                  <p>• 同时运行的最大任务数，超出任务将自动排队</p>
+                  <p>• 队列满时自动等待，无需手动重试</p>
+                  <p>• 支持批量图片处理、多任务并行执行</p>
+                </div>
+              </div>
+
+              {/* PayPal Payment (Web Only) */}
+              <PayPalButton className="mt-4" />
+
               <div className="flex gap-3 pt-3 border-t border-white/5">
                 <button onClick={() => setShowSettings(false)} className="flex-1 py-3 text-sm text-slate-400 hover:text-white">
                   取消
@@ -679,14 +1043,8 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Tools Modal */}
-      <ToolsModal isOpen={showToolsModal} onClose={() => setShowToolsModal(false)} />
-
-      {/* About Dialog */}
-      <AboutDialog isOpen={showAboutDialog} onClose={() => setShowAboutDialog(false)} />
-
       {/* Update Notification */}
-      <UpdateNotification />
+
     </div>
   );
 };

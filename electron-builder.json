@@ -6,6 +6,10 @@
     "directories": {
         "output": "release"
     },
+    "publish": {
+        "provider": "generic",
+        "url": "https://xz.wuwo.casa/download/runninghub-client/"
+    },
     "files": [
         "dist/**/*",
         "electron/**/*",
@@ -18,6 +22,9 @@
     "asarUnpack": [
         "node_modules/archiver/**/*"
     ],
+    "extraResources": [
+        "extraResources/**/*"
+    ],
     "win": {
         "target": [
             {
@@ -27,7 +34,7 @@
                 ]
             }
         ],
-        "icon": "src-tauri/icons/icon.ico",
+        "icon": "public/icon.ico",
         "artifactName": "RunningHub-AI-${version}-Setup.${ext}",
         "publisherName": "RunningHub",
         "requestedExecutionLevel": "asInvoker"
@@ -37,9 +44,9 @@
         "perMachine": false,
         "allowToChangeInstallationDirectory": true,
         "deleteAppDataOnUninstall": false,
-        "installerIcon": "src-tauri/icons/icon.ico",
-        "uninstallerIcon": "src-tauri/icons/icon.ico",
-        "installerHeaderIcon": "src-tauri/icons/icon.ico",
+        "installerIcon": "public/icon.ico",
+        "uninstallerIcon": "public/icon.ico",
+        "installerHeaderIcon": "public/icon.ico",
         "createDesktopShortcut": true,
         "createStartMenuShortcut": true,
         "shortcutName": "RunningHub AI"

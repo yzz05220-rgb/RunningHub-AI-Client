@@ -5,6 +5,9 @@ const STORAGE_KEY_APP_POOL = 'rh_app_pool';         // 中间区域的应用池�
 const STORAGE_KEY_LOCAL_FAVORITES = 'rh_local_favorites'; // 左侧本地收藏（ID列表）
 const STORAGE_KEY_API_KEY = 'rh_api_key';
 const STORAGE_KEY_ACCESS_TOKEN = 'rh_access_token';
+const STORAGE_KEY_REFRESH_TOKEN = 'rh_refresh_token';
+const STORAGE_KEY_DEFAULT_DOWNLOAD_PATH = 'rh_default_download_path';
+const STORAGE_KEY_MAX_CONCURRENT = 'rh_max_concurrent';
 
 // App pool item with local management fields
 export interface AppPoolItem extends FavoriteAppInfo {
@@ -183,5 +186,57 @@ export const appService = {
 
     setAccessToken: (token: string): void => {
         localStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, token);
+    },
+
+    getRefreshToken: (): string => {
+        return localStorage.getItem(STORAGE_KEY_REFRESH_TOKEN) || '';
+    },
+
+    setRefreshToken: (token: string): void => {
+        localStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, token);
+    },
+
+    // ===== DOWNLOAD PATH =====
+
+    getDefaultDownloadPath: (): string => {
+        return localStorage.getItem(STORAGE_KEY_DEFAULT_DOWNLOAD_PATH) || '';
+    },
+
+    setDefaultDownloadPath: (path: string): void => {
+        localStorage.setItem(STORAGE_KEY_DEFAULT_DOWNLOAD_PATH, path);
+    },
+
+    // ===== MAX CONCURRENT =====
+
+    getMaxConcurrent: (): number => {
+        const val = localStorage.getItem(STORAGE_KEY_MAX_CONCURRENT);
+        const num = val ? parseInt(val, 10) : 3;
+        return isNaN(num) ? 3 : Math.min(10, Math.max(1, num));
+    },
+
+    setMaxConcurrent: (count: number): void => {
+        localStorage.setItem(STORAGE_KEY_MAX_CONCURRENT, String(Math.min(10, Math.max(1, count))));
+    },
+
+    // ===== AUTO SAVE =====
+
+    getAutoSaveEnabled: (): boolean => {
+        const val = localStorage.getItem('rh_auto_save_enabled');
+        return val === 'true';
+    },
+
+    setAutoSaveEnabled: (enabled: boolean): void => {
+        localStorage.setItem('rh_auto_save_enabled', String(enabled));
+    },
+
+    // ===== AUTO DECODE =====
+
+    getAutoDecodeEnabled: (): boolean => {
+        const val = localStorage.getItem('rh_auto_decode_enabled');
+        return val === 'true';
+    },
+
+    setAutoDecodeEnabled: (enabled: boolean): void => {
+        localStorage.setItem('rh_auto_decode_enabled', String(enabled));
     }
 };

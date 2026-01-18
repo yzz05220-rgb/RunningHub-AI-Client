@@ -1,7 +1,10 @@
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { BackgroundTask, NodeInfo, TaskOutput } from '../types';
+import { BackgroundTask, NodeInfo } from '../types';
 import { submitTask, queryTaskOutputs, cancelTask as cancelTaskApi } from '../services/api';
+import { appService } from '../services/appService';
+import { isElectronEnvironment } from '../utils/envDetection';
 
 // RunningHub API 状态码
 const API_CODE = {
@@ -12,11 +15,17 @@ const API_CODE = {
     QUEUE_MAXED: 806,
 };
 
-// 并发限制
-const MAX_CONCURRENT = 3;
+// 获取动态并发限制
+const getMaxConcurrent = () => appService.getMaxConcurrent();
 
 // 存储键
 const STORAGE_KEY = 'rh_task_history';
+
+// 从 URL 提取文件扩展名
+const getFileExtension = (url: string): string => {
+    const match = url.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+    return match ? `.${match[1]}` : '.png';
+};
 
 interface TaskState {
     tasks: BackgroundTask[];
@@ -35,9 +44,6 @@ interface TaskState {
     processNextInQueue: () => void;
     startTask: (task: BackgroundTask) => void;
 }
-
-// 定时器存储，用于清理
-const taskTimers: Map<string, { pollInterval?: ReturnType<typeof setInterval>; timeout?: ReturnType<typeof setTimeout> }> = new Map();
 
 export const useTaskStore = create<TaskState>()(
     persist(
@@ -58,7 +64,7 @@ export const useTaskStore = create<TaskState>()(
                 // 找到第一个 QUEUED 状态的任务
                 const queuedTask = tasks.find(t => t.status === 'QUEUED');
 
-                if (runningCount < MAX_CONCURRENT && queuedTask) {
+                if (runningCount < getMaxConcurrent() && queuedTask) {
                     console.log(`[Queue] Starting queued task: ${queuedTask.id}`);
                     get().startTask(queuedTask);
                 }
@@ -66,19 +72,10 @@ export const useTaskStore = create<TaskState>()(
 
             // 内部方法：实际开始执行任务
             startTask: async (task: BackgroundTask) => {
-                const { params, apiKey, webappId } = task;
+                const { params } = task;
+                const apiKey = (task as any).apiKey;
+                const webappId = (task as any).webappId;
                 const taskId = task.id;
-
-                // 检查必要参数
-                if (!apiKey || !webappId || !params) {
-                    console.error('[Task] Missing required parameters');
-                    get().updateTask(taskId, {
-                        status: 'FAILED',
-                        error: '任务参数不完整',
-                        endTime: Date.now()
-                    });
-                    return;
-                }
 
                 set((state) => ({
                     runningCount: state.runningCount + 1,
@@ -87,20 +84,12 @@ export const useTaskStore = create<TaskState>()(
                 get().updateTask(taskId, { status: 'RUNNING', progress: 10, startTime: Date.now() });
 
                 const onTaskComplete = () => {
-                    // 清理定时器
-                    const timers = taskTimers.get(taskId);
-                    if (timers) {
-                        if (timers.pollInterval) clearInterval(timers.pollInterval);
-                        if (timers.timeout) clearTimeout(timers.timeout);
-                        taskTimers.delete(taskId);
-                    }
-                    
                     set(s => ({ runningCount: s.runningCount - 1 }));
                     setTimeout(() => get().processNextInQueue(), 500);
                 };
 
                 try {
-                    const submission = await submitTask(apiKey, webappId, params);
+                    const submission = await submitTask(apiKey, webappId, params!);
                     const remoteTaskId = submission.taskId;
 
                     console.log('[Task] Submitted, remoteTaskId:', remoteTaskId);
@@ -115,11 +104,136 @@ export const useTaskStore = create<TaskState>()(
 
                             switch (result.code) {
                                 case API_CODE.SUCCESS:
+                                    clearInterval(pollInterval);
+
+                                    // Normalize result.data to ensure {fileUrl: string}[] format
+                                    let normalizedResults: { fileUrl: string, fileType?: string }[] = [];
+                                    const rawData = result.data;
+
+                                    if (Array.isArray(rawData)) {
+                                        normalizedResults = rawData.map((item: any) => {
+                                            // Case 1: Already correct format {fileUrl: "..."}
+                                            if (item && typeof item.fileUrl === 'string') {
+                                                return { fileUrl: item.fileUrl, fileType: item.fileType };
+                                            }
+                                            // Case 2: Item is a string URL directly
+                                            if (typeof item === 'string') {
+                                                return { fileUrl: item };
+                                            }
+                                            // Case 3: Item has url instead of fileUrl
+                                            if (item && typeof item.url === 'string') {
+                                                return { fileUrl: item.url, fileType: item.fileType || item.type };
+                                            }
+                                            // Case 4: Skip invalid items
+                                            return null;
+                                        }).filter(Boolean) as { fileUrl: string, fileType?: string }[];
+                                    } else if (rawData && typeof rawData === 'object') {
+                                        // Case 5: Single object with outputs array
+                                        if (Array.isArray(rawData.outputs)) {
+                                            normalizedResults = rawData.outputs.map((item: any) => {
+                                                if (typeof item === 'string') return { fileUrl: item };
+                                                if (item && typeof item.fileUrl === 'string') return item;
+                                                if (item && typeof item.url === 'string') return { fileUrl: item.url };
+                                                return null;
+                                            }).filter(Boolean);
+                                        }
+                                        // Case 6: Single object with fileUrl
+                                        else if (typeof rawData.fileUrl === 'string') {
+                                            normalizedResults = [{ fileUrl: rawData.fileUrl }];
+                                        }
+                                    }
+
+                                    console.log('[Task] Normalized results:', normalizedResults);
+
+                                    // 自动保存到预设目录（如果已配置）
+                                    const defaultPath = appService.getDefaultDownloadPath();
+                                    if (defaultPath && isElectronEnvironment() && normalizedResults.length > 0) {
+                                        console.log('[Task] Auto-saving to:', defaultPath);
+                                        try {
+                                            const electronAPI = (window as any).electronAPI;
+                                            if (electronAPI?.autoSaveFiles) {
+                                                const filesToSave = normalizedResults.map((r, idx) => ({
+                                                    url: r.fileUrl,
+                                                    name: `${task.appName || 'output'}_${taskId.slice(0, 8)}_${idx + 1}${getFileExtension(r.fileUrl)}`
+                                                }));
+                                                electronAPI.autoSaveFiles(filesToSave, defaultPath)
+                                                    .then((res: any) => console.log('[Task] Auto-save result:', res))
+                                                    .catch((err: any) => console.error('[Task] Auto-save failed:', err));
+                                            }
+                                        } catch (e) {
+                                            console.error('[Task] Auto-save error:', e);
+                                        }
+                                    }
+
+                                    // 自动解码图片结果
+                                    const autoDecodeEnabled = localStorage.getItem('rh_auto_decode_enabled') === 'true';
+                                    if (autoDecodeEnabled && isElectronEnvironment() && normalizedResults.length > 0) {
+                                        console.log('[Task] Auto-decoding results...');
+                                        try {
+                                            const electronAPI = (window as any).electronAPI;
+                                            if (electronAPI?.decodeImage) {
+                                                // 对每个图片结果进行解码
+                                                const decodePromises = normalizedResults.map(async (r, idx) => {
+                                                    try {
+                                                        // 只处理图片类型
+                                                        if (!/\.(png|jpg|jpeg|webp)$/i.test(r.fileUrl)) return r;
+
+                                                        // 下载图片数据
+                                                        const response = await fetch(r.fileUrl);
+                                                        if (!response.ok) return r;
+                                                        const arrayBuffer = await response.arrayBuffer();
+                                                        const uint8Array = new Uint8Array(arrayBuffer);
+
+                                                        // 调用解码 API
+                                                        const fileName = r.fileUrl.split('/').pop() || `image_${idx}.png`;
+                                                        const decodeResult = await electronAPI.decodeImage(Array.from(uint8Array), fileName);
+
+                                                        if (decodeResult?.success && decodeResult.outputPath) {
+                                                            console.log(`[Task] Decoded image ${idx + 1}`);
+                                                            return { ...r, fileUrl: decodeResult.outputPath };
+                                                        }
+                                                        return r;
+                                                    } catch (err) {
+                                                        console.warn(`[Task] Failed to decode image ${idx + 1}:`, err);
+                                                        return r;
+                                                    }
+                                                });
+
+                                                Promise.all(decodePromises).then(decodedResults => {
+                                                    // 更新结果为解码后的图片
+                                                    get().updateTask(taskId, { result: decodedResults });
+                                                    console.log('[Task] Auto-decode completed');
+                                                });
+                                            }
+                                        } catch (e) {
+                                            console.error('[Task] Auto-decode error:', e);
+                                        }
+                                    }
+
+                                    // 打印完整响应用于调试消耗字段
+                                    console.log('[Task] Full API response data:', JSON.stringify(rawData, null, 2));
+
+                                    // 解析消耗字段 - consumeCoins 在每个输出项中，需要累加
+                                    let totalConsumeCoins = 0;
+                                    let totalConsumeMoney = 0;
+                                    if (Array.isArray(rawData)) {
+                                        rawData.forEach((item: any) => {
+                                            if (item?.consumeCoins) {
+                                                totalConsumeCoins += parseFloat(item.consumeCoins) || 0;
+                                            }
+                                            if (item?.consumeMoney) {
+                                                totalConsumeMoney += parseFloat(item.consumeMoney) || 0;
+                                            }
+                                        });
+                                    }
+
                                     get().updateTask(taskId, {
                                         status: 'SUCCESS',
                                         progress: 100,
-                                        result: result.data as TaskOutput[],
-                                        endTime: Date.now()
+                                        result: normalizedResults,
+                                        endTime: Date.now(),
+                                        costCoins: totalConsumeCoins > 0 ? String(totalConsumeCoins) : undefined,
+                                        costMoney: totalConsumeMoney > 0 ? String(totalConsumeMoney) : undefined
                                     });
                                     onTaskComplete();
                                     break;
@@ -133,22 +247,35 @@ export const useTaskStore = create<TaskState>()(
                                     break;
 
                                 case API_CODE.FAILED:
-                                case API_CODE.QUEUE_MAXED:
-                                    let errorMsg = result.msg || '任务执行失败';
-                                    const failedData = result.data as { failedReason?: { exception_message?: string; exception_type?: string; node_name?: string } };
-                                    if (failedData?.failedReason) {
-                                        const reason = failedData.failedReason;
-                                        errorMsg = reason.exception_message || reason.exception_type || errorMsg;
-                                        if (reason.node_name) {
+                                    clearInterval(pollInterval);
+                                    let errorMsg = typeof result.msg === 'string' ? result.msg : '任务执行失败';
+                                    if (result.data?.failedReason) {
+                                        const reason = result.data.failedReason;
+                                        const exMsg = reason.exception_message || reason.exception_type;
+                                        if (typeof exMsg === 'string') {
+                                            errorMsg = exMsg;
+                                        } else if (exMsg) {
+                                            errorMsg = JSON.stringify(exMsg);
+                                        }
+                                        if (reason.node_name && typeof reason.node_name === 'string') {
                                             errorMsg = `[${reason.node_name}] ${errorMsg}`;
                                         }
                                     }
                                     get().updateTask(taskId, {
                                         status: 'FAILED',
-                                        error: errorMsg,
+                                        error: String(errorMsg),
                                         endTime: Date.now()
                                     });
                                     onTaskComplete();
+                                    break;
+
+                                case API_CODE.QUEUE_MAXED:
+                                    // 服务端队列满，客户端继续等待重试（不直接失败）
+                                    get().updateTask(taskId, {
+                                        progress: 10,
+                                        status: 'QUEUED'
+                                    });
+                                    // 继续轮询，等待队列空位
                                     break;
                             }
                         } catch (e) {
@@ -156,7 +283,8 @@ export const useTaskStore = create<TaskState>()(
                         }
                     }, 3000);
 
-                    const timeout = setTimeout(() => {
+                    setTimeout(() => {
+                        clearInterval(pollInterval);
                         const current = get().tasks.find(t => t.id === taskId);
                         if (current && current.status === 'RUNNING') {
                             get().updateTask(taskId, {
@@ -168,15 +296,11 @@ export const useTaskStore = create<TaskState>()(
                         }
                     }, 3600000);
 
-                    // 存储定时器引用
-                    taskTimers.set(taskId, { pollInterval, timeout });
-
-                } catch (e: unknown) {
+                } catch (e: any) {
                     console.error('[Task] Submission Failed:', e);
-                    const errorMessage = e instanceof Error ? e.message : '提交任务失败';
                     get().updateTask(taskId, {
                         status: 'FAILED',
-                        error: errorMessage,
+                        error: e.message || '提交任务失败',
                         endTime: Date.now()
                     });
                     onTaskComplete();
@@ -194,22 +318,22 @@ export const useTaskStore = create<TaskState>()(
                     id: taskId,
                     appId,
                     appName,
-                    status: runningCount >= MAX_CONCURRENT ? 'QUEUED' : 'PENDING',
+                    status: runningCount >= getMaxConcurrent() ? 'QUEUED' : 'PENDING',
                     progress: 0,
                     startTime: Date.now(),
                     params,
                     // 存储额外信息用于后续执行
                     apiKey,
                     webappId,
-                    queuePosition: runningCount >= MAX_CONCURRENT ? queuedCount + 1 : undefined,
-                };
+                    queuePosition: runningCount >= getMaxConcurrent() ? queuedCount + 1 : undefined,
+                } as any;
 
                 set((state) => ({
                     tasks: [newTask, ...state.tasks],
                 }));
 
                 // 如果没超出并发限制，立即开始执行
-                if (runningCount < MAX_CONCURRENT) {
+                if (runningCount < getMaxConcurrent()) {
                     get().startTask(newTask);
                 } else {
                     console.log(`[Queue] Task queued at position ${queuedCount + 1}`);
@@ -228,15 +352,6 @@ export const useTaskStore = create<TaskState>()(
 
             removeTask: (taskId) => {
                 const task = get().tasks.find(t => t.id === taskId);
-                
-                // 清理定时器
-                const timers = taskTimers.get(taskId);
-                if (timers) {
-                    if (timers.pollInterval) clearInterval(timers.pollInterval);
-                    if (timers.timeout) clearTimeout(timers.timeout);
-                    taskTimers.delete(taskId);
-                }
-                
                 set((state) => ({
                     tasks: state.tasks.filter((t) => t.id !== taskId),
                 }));
@@ -250,18 +365,10 @@ export const useTaskStore = create<TaskState>()(
                 const task = get().tasks.find(t => t.id === taskId);
                 if (!task) return;
 
-                // 清理定时器
-                const timers = taskTimers.get(taskId);
-                if (timers) {
-                    if (timers.pollInterval) clearInterval(timers.pollInterval);
-                    if (timers.timeout) clearTimeout(timers.timeout);
-                    taskTimers.delete(taskId);
-                }
-
                 // 如果有远程 taskId，调用 API 取消
-                if (task.remoteTaskId && task.apiKey) {
+                if (task.remoteTaskId && (task as any).apiKey) {
                     try {
-                        await cancelTaskApi(task.apiKey, task.remoteTaskId);
+                        await cancelTaskApi((task as any).apiKey, task.remoteTaskId);
                         console.log('[Task] Cancelled:', task.remoteTaskId);
                     } catch (e) {
                         console.warn('[Task] Cancel API failed:', e);

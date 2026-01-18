@@ -41,16 +41,25 @@ const AppLibrarySidebar: React.FC<AppLibrarySidebarProps> = ({ onSelectApp, sele
         setApps(appService.getAllApps());
     };
 
-    const extractIdFromUrl = (input: string) => {
+    const extractIdFromUrl = (input: string): string => {
+        console.log('[extractIdFromUrl] Input:', input);
+
         // Handle full URL like https://www.runninghub.cn/ai-detail/2010287561301823489
         const urlMatch = input.match(/ai-detail\/(\d+)/);
-        if (urlMatch) return urlMatch[1];
+        if (urlMatch) {
+            console.log('[extractIdFromUrl] URL Match found:', urlMatch[1]);
+            return urlMatch[1];
+        }
 
         // Handle URL with query params
         const queryMatch = input.match(/webappId=(\d+)/);
-        if (queryMatch) return queryMatch[1];
+        if (queryMatch) {
+            console.log('[extractIdFromUrl] Query Match found:', queryMatch[1]);
+            return queryMatch[1];
+        }
 
-        // Return trimmed input if it looks like a numeric ID, otherwise return as is
+        // Return trimmed input as fallback
+        console.log('[extractIdFromUrl] No match, returning trimmed input');
         return input.trim();
     };
 
@@ -203,7 +212,7 @@ const AppLibrarySidebar: React.FC<AppLibrarySidebarProps> = ({ onSelectApp, sele
                                             type="text"
                                             value={importId}
                                             onChange={(e) => setImportId(e.target.value)}
-                                            placeholder="粘贴 RunningHub 应用 ID"
+                                            placeholder="ID 或完整链接 (如 runninghub.cn/ai-detail/...)"
                                             className="w-full bg-black/20 border border-white/10 rounded-lg py-2.5 px-3 pl-9 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 transition-all"
                                         />
                                         <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />

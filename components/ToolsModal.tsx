@@ -1,159 +1,154 @@
 import React, { useState } from 'react';
-import { X, Wrench, Image, Sparkles, ChevronRight } from 'lucide-react';
-import ImageResizer from './ImageResizer';
-
-type ToolType = 'image-resizer' | null;
+import { X, ArrowLeft, Image as ImageIcon, Sparkles, Clock, Wrench, Unlock } from 'lucide-react';
+import { ImageResizer } from './ImageResizer';
+import { ImageDecoder } from './ImageDecoder';
 
 interface ToolsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface ToolItem {
-  id: ToolType;
+// 工具定义
+interface Tool {
+  id: string;
   name: string;
   description: string;
   icon: React.ReactNode;
-  badge?: string;
+  component: React.ComponentType | null;
+  comingSoon?: boolean;
 }
 
-const tools: ToolItem[] = [
+const tools: Tool[] = [
   {
     id: 'image-resizer',
     name: '图片尺寸统一',
-    description: '批量调整图片尺寸，支持等比缩放、填充、裁剪、智能自动等模式',
-    icon: <Image className="w-5 h-5" />,
+    description: '批量调整图片尺寸和格式，支持等比缩放、裁剪填充等模式',
+    icon: <ImageIcon className="w-6 h-6" />,
+    component: ImageResizer,
   },
-  // 未来可以添加更多工具
-  // {
-  //   id: 'image-compress',
-  //   name: '图片压缩',
-  //   description: '压缩图片文件大小，保持画质',
-  //   icon: <Sparkles className="w-5 h-5" />,
-  //   badge: '即将推出',
-  // },
+  {
+    id: 'image-decoder',
+    name: '图片解码',
+    description: '解码使用 SS_tools 编码的隐藏图片内容',
+    icon: <Unlock className="w-6 h-6" />,
+    component: ImageDecoder,
+  },
+  {
+    id: 'coming-soon-1',
+    name: '更多工具',
+    description: '敬请期待更多实用工具...',
+    icon: <Sparkles className="w-6 h-6" />,
+    component: null,
+    comingSoon: true,
+  },
 ];
 
-const ToolsModal: React.FC<ToolsModalProps> = ({ isOpen, onClose }) => {
-  const [activeTool, setActiveTool] = useState<ToolType>(null);
+export function ToolsModal({ isOpen, onClose }: ToolsModalProps) {
+  const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
 
   if (!isOpen) return null;
 
-  const handleBack = () => {
-    setActiveTool(null);
-  };
-
+  const handleBack = () => setSelectedTool(null);
   const handleClose = () => {
-    setActiveTool(null);
+    setSelectedTool(null);
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl h-[85vh] bg-[#14171d] rounded-2xl border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* 背景遮罩 */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={handleClose}
+      />
+
+      {/* 模态框内容 */}
+      <div className="relative w-[95vw] max-w-5xl h-[85vh] bg-gradient-to-br from-[#1a1d24] to-[#13161b] rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-white/10">
         {/* 头部 */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-white/5">
           <div className="flex items-center gap-3">
-            {activeTool ? (
+            {selectedTool && (
               <button
                 onClick={handleBack}
-                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/60 hover:text-white"
               >
-                <ChevronRight className="w-5 h-5 text-slate-400 rotate-180" />
+                <ArrowLeft size={20} />
               </button>
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center">
+            )}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
                 <Wrench className="w-5 h-5 text-white" />
               </div>
-            )}
-            <div>
-              <h2 className="text-base font-bold text-white">
-                {activeTool 
-                  ? tools.find(t => t.id === activeTool)?.name || '工具'
-                  : '工具箱'
-                }
-              </h2>
-              {!activeTool && (
-                <p className="text-xs text-slate-500">实用工具集合</p>
-              )}
+              <div>
+                <h2 className="text-lg font-bold text-white">
+                  {selectedTool ? selectedTool.name : '工具箱'}
+                </h2>
+                <p className="text-xs text-slate-400">
+                  {selectedTool ? selectedTool.description : 'RunningHub AI 实用工具集'}
+                </p>
+              </div>
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/60 hover:text-white"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X size={20} />
           </button>
         </div>
 
         {/* 内容区域 */}
         <div className="flex-1 overflow-hidden">
-          {!activeTool ? (
-            // 工具列表
-            <div className="p-5 grid gap-3">
-              {tools.map((tool) => (
-                <button
-                  key={tool.id}
-                  onClick={() => tool.id && !tool.badge && setActiveTool(tool.id)}
-                  disabled={!!tool.badge}
-                  className={`
-                    w-full p-4 rounded-xl border text-left transition-all
-                    ${tool.badge
-                      ? 'border-white/5 bg-white/[0.02] opacity-60 cursor-not-allowed'
-                      : 'border-white/10 hover:border-brand-500/50 hover:bg-brand-500/5 cursor-pointer'
-                    }
-                  `}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`
-                      w-12 h-12 rounded-xl flex items-center justify-center shrink-0
-                      ${tool.badge ? 'bg-white/5 text-slate-500' : 'bg-brand-500/10 text-brand-400'}
-                    `}>
-                      {tool.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-white">{tool.name}</h3>
-                        {tool.badge && (
-                          <span className="px-2 py-0.5 text-[10px] bg-white/10 text-slate-400 rounded-full">
-                            {tool.badge}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500 mt-1">{tool.description}</p>
-                    </div>
-                    {!tool.badge && (
-                      <ChevronRight className="w-5 h-5 text-slate-500 shrink-0" />
-                    )}
-                  </div>
-                </button>
-              ))}
-
-              {/* 提示信息 */}
-              <div className="mt-4 p-4 bg-white/[0.02] border border-white/5 rounded-xl">
-                <div className="flex items-start gap-3">
-                  <Sparkles className="w-5 h-5 text-amber-400 shrink-0" />
-                  <div>
-                    <p className="text-xs text-slate-400">
-                      更多工具正在开发中，敬请期待！
-                    </p>
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      如有工具需求建议，欢迎反馈
-                    </p>
-                  </div>
-                </div>
-              </div>
+          {selectedTool ? (
+            // 二级页面：工具详情
+            <div className="h-full">
+              {selectedTool.component && <selectedTool.component />}
             </div>
           ) : (
-            // 具体工具内容
-            <div className="h-full">
-              {activeTool === 'image-resizer' && <ImageResizer />}
+            // 一级页面：工具网格
+            <div className="p-6 h-full overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {tools.map((tool) => (
+                  <button
+                    key={tool.id}
+                    onClick={() => !tool.comingSoon && setSelectedTool(tool)}
+                    disabled={tool.comingSoon}
+                    className={`group relative p-6 rounded-xl border text-left transition-all duration-300 ${tool.comingSoon
+                      ? 'bg-white/5 border-white/5 cursor-not-allowed opacity-60'
+                      : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/10 hover:scale-[1.02] cursor-pointer'
+                      }`}
+                  >
+                    {/* 图标 */}
+                    <div className={`w-14 h-14 rounded-xl flex items-center justify-center mb-4 transition-colors ${tool.comingSoon
+                      ? 'bg-slate-700/50 text-slate-500'
+                      : 'bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-400 group-hover:from-emerald-500/30 group-hover:to-teal-500/30'
+                      }`}>
+                      {tool.icon}
+                    </div>
+
+                    {/* 名称和描述 */}
+                    <h3 className={`text-base font-semibold mb-2 transition-colors ${tool.comingSoon ? 'text-slate-500' : 'text-white group-hover:text-emerald-300'
+                      }`}>
+                      {tool.name}
+                    </h3>
+                    <p className="text-sm text-slate-400 leading-relaxed">
+                      {tool.description}
+                    </p>
+
+                    {/* 敬请期待标签 */}
+                    {tool.comingSoon && (
+                      <div className="absolute top-4 right-4 flex items-center gap-1 text-xs text-slate-500 bg-slate-700/50 px-2 py-1 rounded-full">
+                        <Clock className="w-3 h-3" />
+                        敬请期待
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
     </div>
   );
-};
-
-export default ToolsModal;
+}

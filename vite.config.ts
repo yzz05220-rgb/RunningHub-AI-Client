@@ -4,12 +4,11 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+
   return {
-    base: './',
     server: {
       port: 5173,
       host: '0.0.0.0',
-      allowedHosts: true,
     },
     plugins: [react()],
     define: {
@@ -20,6 +19,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       }
-    }
+    },
+    base: './',
   };
 });

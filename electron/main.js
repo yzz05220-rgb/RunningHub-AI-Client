@@ -1,9 +1,15 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, session, dialog, shell } = require('electron');
 const path = require('path');
-const isDev = require('electron-is-dev');
+
+// 使用备用方案检测开发环境，避免 ES Module 兼容性问题
+const isDev = !app.isPackaged;
 const { autoUpdater } = require('electron-updater');
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
 let mainWindow;
+let loginWindow = null;
 
 // 配置自动更新
 autoUpdater.autoDownload = false; // 建议手动触发下载，体验更好
@@ -11,152 +17,543 @@ autoUpdater.logger = require('electron-log');
 autoUpdater.logger.transports.file.level = 'info';
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 1000,
-    minHeight: 600,
-    titleBarStyle: 'hiddenInset', // macOS 风格
-    backgroundColor: '#14171d',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
-    },
-    icon: path.join(__dirname, '../public/logo.png'), // 确保有图标
-  });
+    mainWindow = new BrowserWindow({
+        width: 1280,
+        height: 800,
+        minWidth: 1000,
+        minHeight: 600,
+        titleBarStyle: 'hiddenInset', // macOS 风格
+        backgroundColor: '#14171d',
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            nodeIntegration: false,
+            contextIsolation: true,
+        },
+        icon: path.join(__dirname, '../public/rh.png'),
+        show: false, // 准备好再显示
+    });
 
-  const startUrl = isDev 
-    ? 'http://localhost:5173' 
-    : `file://${path.join(__dirname, '../dist/index.html')}`;
+    const startUrl = isDev
+        ? 'http://localhost:5173'
+        : `file://${path.join(__dirname, '../dist/index.html')}`;
 
-  mainWindow.loadURL(startUrl);
+    mainWindow.loadURL(startUrl);
 
-  if (isDev) {
-    mainWindow.webContents.openDevTools();
-  }
+    mainWindow.on('ready-to-show', () => {
+        mainWindow.show();
+    });
 
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+    // Open external links in default browser
+    mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+        if (url.startsWith('https:') || url.startsWith('http:')) {
+            require('electron').shell.openExternal(url);
+        }
+        return { action: 'deny' };
+    });
 
-  // 创建菜单
-  createMenu();
+    if (isDev) {
+        mainWindow.webContents.openDevTools();
+    }
+
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
+
+    createMenu();
 }
 
 function createMenu() {
-  const template = [
-    {
-      label: '编辑',
-      submenu: [
-        { role: 'undo', label: '撤销' },
-        { role: 'redo', label: '重做' },
-        { type: 'separator' },
-        { role: 'cut', label: '剪切' },
-        { role: 'copy', label: '复制' },
-        { role: 'paste', label: '粘贴' },
-      ]
-    },
-    {
-      label: '视图',
-      submenu: [
-        { role: 'reload', label: '刷新' },
-        { role: 'toggleDevTools', label: '开发者工具' },
-        { type: 'separator' },
-        { role: 'resetZoom', label: '重置缩放' },
-        { role: 'zoomIn', label: '放大' },
-        { role: 'zoomOut', label: '缩小' },
-        { type: 'separator' },
-        { role: 'togglefullscreen', label: '全屏' }
-      ]
-    },
-    {
-      label: '帮助',
-      submenu: [
+    const template = [
         {
-          label: '关于 RunningHub AI',
-          click: () => {
-            mainWindow.webContents.send('show-about-dialog');
-          }
+            label: '编辑',
+            submenu: [
+                { role: 'undo', label: '撤销' },
+                { role: 'redo', label: '重做' },
+                { type: 'separator' },
+                { role: 'cut', label: '剪切' },
+                { role: 'copy', label: '复制' },
+                { role: 'paste', label: '粘贴' },
+            ]
         },
         {
-          label: '检查更新',
-          click: () => {
-            autoUpdater.checkForUpdates();
-          }
+            label: '视图',
+            submenu: [
+                { role: 'reload', label: '刷新' },
+                { role: 'toggleDevTools', label: '开发者工具' },
+                { type: 'separator' },
+                { role: 'resetZoom', label: '重置缩放' },
+                { role: 'zoomIn', label: '放大' },
+                { role: 'zoomOut', label: '缩小' },
+                { type: 'separator' },
+                { role: 'togglefullscreen', label: '全屏' }
+            ]
         },
-        { type: 'separator' },
         {
-          label: '访问官网',
-          click: async () => {
-            const { shell } = require('electron');
-            await shell.openExternal('https://runninghub.ai');
-          }
+            label: '帮助',
+            submenu: [
+                {
+                    label: '关于 RunningHub AI',
+                    click: () => {
+                        if (mainWindow) mainWindow.webContents.send('show-about-dialog');
+                    }
+                },
+                {
+                    label: '检查更新',
+                    click: () => {
+                        autoUpdater.checkForUpdates();
+                    }
+                },
+                { type: 'separator' },
+                {
+                    label: '查看日志文件',
+                    click: () => {
+                        const logPath = autoUpdater.logger.transports.file.getFile().path;
+                        shell.showItemInFolder(logPath);
+                    }
+                },
+                { type: 'separator' },
+                {
+                    label: '访问官网',
+                    click: async () => {
+                        await shell.openExternal('https://runninghub.ai');
+                    }
+                }
+            ]
         }
-      ]
-    }
-  ];
+    ];
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
 }
 
 app.on('ready', () => {
-  createWindow();
-  // 启动时自动检查更新
-  if (!isDev) {
-    autoUpdater.checkForUpdatesAndNotify();
-  }
+    createWindow();
+    // 启动时自动检查更新 (仅生产环境)
+    if (!isDev) {
+        autoUpdater.checkForUpdatesAndNotify();
+    }
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+    if (process.platform !== 'darwin') {
+        app.quit();
+    }
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
+    if (mainWindow === null) {
+        createWindow();
+    }
 });
 
 // --- 自动更新事件处理 ---
 
 autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for update...');
+    console.log('Checking for update...');
 });
 
 autoUpdater.on('update-available', (info) => {
-  mainWindow.webContents.send('update-available', info);
+    if (mainWindow) mainWindow.webContents.send('update-available', info);
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  mainWindow.webContents.send('update-not-available', info);
+    if (mainWindow) mainWindow.webContents.send('update-not-available', info);
 });
 
 autoUpdater.on('error', (err) => {
-  mainWindow.webContents.send('update-error', err.message);
+    if (mainWindow) mainWindow.webContents.send('update-error', err.message);
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  mainWindow.webContents.send('download-progress', progressObj);
+    // Send as update-download-progress to avoid conflict with batch download
+    if (mainWindow) mainWindow.webContents.send('update-download-progress', progressObj);
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  mainWindow.webContents.send('update-downloaded', info);
+    if (mainWindow) mainWindow.webContents.send('update-downloaded', info);
 });
 
 // --- IPC 通信处理 ---
 
 ipcMain.on('start-download', () => {
-  autoUpdater.downloadUpdate();
+    autoUpdater.downloadUpdate();
 });
 
 ipcMain.on('quit-and-install', () => {
-  autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall();
 });
 
 ipcMain.on('check-update', () => {
-  autoUpdater.checkForUpdates();
+    autoUpdater.checkForUpdates();
+});
+
+// --- Image Decoder (SS_tools) ---
+ipcMain.handle('decode-image', async (event, imageDataArray, fileName) => {
+    try {
+        const { execFile } = require('child_process');
+        const os = require('os');
+
+        // 获取 decoder 路径
+        const decoderPath = isDev
+            ? path.join(__dirname, '../extraResources/duck_decoder.exe')
+            : path.join(process.resourcesPath, 'extraResources/duck_decoder.exe');
+
+        console.log('[decode-image] isDev:', isDev);
+        console.log('[decode-image] __dirname:', __dirname);
+        console.log('[decode-image] decoderPath:', decoderPath);
+        console.log('[decode-image] exists:', fs.existsSync(decoderPath));
+
+        // 检查 decoder 是否存在
+        if (!fs.existsSync(decoderPath)) {
+            return { success: false, error: '解码器不存在' };
+        }
+
+        // 创建临时文件
+        const tempDir = os.tmpdir();
+        const inputPath = path.join(tempDir, `decode_input_${Date.now()}_${fileName}`);
+        const outputPath = path.join(tempDir, `decode_output_${Date.now()}_${fileName}`);
+
+        // 写入输入文件
+        fs.writeFileSync(inputPath, Buffer.from(imageDataArray));
+
+        // 执行解码
+        await new Promise((resolve, reject) => {
+            execFile(decoderPath, ['--duck', inputPath, '--out', outputPath], { timeout: 60000 }, (error, stdout, stderr) => {
+                if (error) {
+                    reject(new Error(stderr || error.message));
+                } else {
+                    resolve(stdout);
+                }
+            });
+        });
+
+        // 检查输出文件
+        if (!fs.existsSync(outputPath)) {
+            // 清理临时文件
+            fs.unlinkSync(inputPath);
+            return { success: false, error: '解码失败：未生成输出文件' };
+        }
+
+        // 返回输出路径
+        const outputData = fs.readFileSync(outputPath);
+        const base64 = outputData.toString('base64');
+        const mimeType = fileName.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+
+        // 清理临时文件
+        fs.unlinkSync(inputPath);
+        fs.unlinkSync(outputPath);
+
+        return {
+            success: true,
+            outputPath: `data:${mimeType};base64,${base64}`
+        };
+    } catch (error) {
+        console.error('[decode-image] Error:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+// --- Login Handler (Legacy/Compatibility) ---
+ipcMain.handle('open-login', async () => {
+    if (loginWindow) {
+        loginWindow.focus();
+        return;
+    }
+
+    loginWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        parent: mainWindow,
+        modal: true,
+        show: false,
+        title: '登录 RunningHub',
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+        }
+    });
+
+    loginWindow.once('ready-to-show', () => {
+        loginWindow.show();
+    });
+
+    const checkAndSendTokens = async () => {
+        try {
+            const cookies = await session.defaultSession.cookies.get({ domain: 'runninghub.cn' });
+            let accessToken = '';
+            let refreshToken = '';
+            cookies.forEach(cookie => {
+                if (cookie.name === 'Rh-Accesstoken') accessToken = cookie.value;
+                if (cookie.name === 'Rh-Refreshtoken') refreshToken = cookie.value;
+            });
+
+            if (accessToken && refreshToken) {
+                if (mainWindow) {
+                    mainWindow.webContents.send('login-success', { accessToken, refreshToken });
+                }
+                if (loginWindow) {
+                    loginWindow.close();
+                    loginWindow = null;
+                }
+            }
+        } catch (error) {
+            console.error('Check tokens error:', error);
+        }
+    };
+
+    session.defaultSession.cookies.on('changed', (event, cookie, cause, removed) => {
+        if (cookie.domain.includes('runninghub.cn')) {
+            if (cookie.name === 'Rh-Accesstoken' || cookie.name === 'Rh-Refreshtoken') {
+                checkAndSendTokens();
+            }
+        }
+    });
+
+    // Poll for localstorage as fallback
+    const pollInterval = setInterval(async () => {
+        if (!loginWindow || loginWindow.isDestroyed()) {
+            clearInterval(pollInterval);
+            return;
+        }
+        try {
+            const tokens = await loginWindow.webContents.executeJavaScript(`
+                (function() {
+                    return {
+                        accessToken: localStorage.getItem('Rh-Accesstoken'),
+                        refreshToken: localStorage.getItem('Rh-Refreshtoken')
+                    };
+                })();
+            `);
+
+            if (tokens.accessToken && tokens.refreshToken) {
+                mainWindow.webContents.send('login-success', tokens);
+                clearInterval(pollInterval);
+                loginWindow.close();
+                loginWindow = null;
+            }
+        } catch (e) { }
+    }, 1000);
+
+    loginWindow.loadURL('https://www.runninghub.cn/login');
+
+    loginWindow.on('closed', () => {
+        loginWindow = null;
+        clearInterval(pollInterval);
+    });
+});
+
+// --- Batch Download Handler ---
+
+// 选择下载目录
+ipcMain.handle('select-download-folder', async () => {
+    if (!mainWindow) return null;
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: '选择默认保存目录',
+        properties: ['openDirectory', 'createDirectory']
+    });
+    if (canceled || filePaths.length === 0) return null;
+    return filePaths[0];
+});
+
+// 任务完成后自动保存文件（不打包，直接保存到目录）
+ipcMain.handle('auto-save-files', async (event, files, targetDir) => {
+    if (!targetDir || !fs.existsSync(targetDir)) {
+        return { success: false, message: 'Invalid target directory' };
+    }
+
+    const downloadFile = (url, fileName) => {
+        return new Promise((resolve, reject) => {
+            const destPath = path.join(targetDir, fileName);
+            const fileStream = fs.createWriteStream(destPath);
+            const protocol = url.startsWith('https') ? https : http;
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                    downloadFile(response.headers.location, fileName).then(resolve).catch(reject);
+                    return;
+                }
+                if (response.statusCode !== 200) {
+                    fs.unlink(destPath, () => { });
+                    reject(new Error(`Status Code: ${response.statusCode}`));
+                    return;
+                }
+                response.pipe(fileStream);
+                fileStream.on('finish', () => {
+                    fileStream.close(() => resolve(destPath));
+                });
+                fileStream.on('error', (err) => {
+                    fs.unlink(destPath, () => { });
+                    reject(err);
+                });
+            });
+            request.on('error', (err) => {
+                fs.unlink(destPath, () => { });
+                reject(err);
+            });
+        });
+    };
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const file of files) {
+        try {
+            const safeName = file.name.replace(/[<>:"/\\|?*]+/g, '_');
+            await downloadFile(file.url, safeName);
+            successCount++;
+            console.log(`[Auto-Save] Saved: ${safeName}`);
+        } catch (error) {
+            failCount++;
+            console.error(`[Auto-Save] Failed: ${file.name}`, error);
+        }
+    }
+
+    return {
+        success: successCount > 0,
+        message: `已保存 ${successCount} 个文件${failCount > 0 ? `，${failCount} 个失败` : ''}`,
+        stats: { success: successCount, fail: failCount }
+    };
+});
+
+// 单文件下载到指定目录
+ipcMain.handle('download-file', async (event, url, targetDir, fileName) => {
+    try {
+        const filePath = path.join(targetDir, fileName);
+        const protocol = url.startsWith('https') ? https : http;
+
+        await new Promise((resolve, reject) => {
+            const file = fs.createWriteStream(filePath);
+            protocol.get(url, (response) => {
+                if (response.statusCode === 301 || response.statusCode === 302) {
+                    // 处理重定向
+                    const redirectUrl = response.headers.location;
+                    const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
+                    redirectProtocol.get(redirectUrl, (res) => {
+                        res.pipe(file);
+                        file.on('finish', () => { file.close(); resolve(); });
+                    }).on('error', reject);
+                } else {
+                    response.pipe(file);
+                    file.on('finish', () => { file.close(); resolve(); });
+                }
+            }).on('error', (err) => {
+                fs.unlink(filePath, () => { });
+                reject(err);
+            });
+        });
+
+        return { success: true, path: filePath };
+    } catch (error) {
+        console.error('[download-file] Failed:', error);
+        return { success: false, error: error.message };
+    }
+});
+
+ipcMain.handle('download-files', async (event, files, options = {}) => {
+    if (!mainWindow) return { success: false, message: 'Window not found' };
+    const archiver = require('archiver');
+    const os = require('os');
+
+    const { defaultPath } = options;
+    const timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const defaultName = `RunningHub_Batch_${timestamp}.zip`;
+
+    let filePath;
+
+    // 如果提供了默认保存路径，直接使用
+    if (defaultPath && fs.existsSync(defaultPath)) {
+        filePath = path.join(defaultPath, defaultName);
+    } else {
+        // 否则弹出保存对话框
+        const result = await dialog.showSaveDialog(mainWindow, {
+            title: '保存批量下载',
+            defaultPath: path.join(app.getPath('downloads'), defaultName),
+            filters: [{ name: 'ZIP 压缩包', extensions: ['zip'] }]
+        });
+
+        if (result.canceled || !result.filePath) return { success: false, message: 'User canceled' };
+        filePath = result.filePath;
+    }
+
+    const tempDir = path.join(os.tmpdir(), `rh_batch_${Date.now()}`);
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    const downloadFile = (url, fileName) => {
+        return new Promise((resolve, reject) => {
+            const destPath = path.join(tempDir, fileName);
+            const fileStream = fs.createWriteStream(destPath);
+            const protocol = url.startsWith('https') ? https : http;
+            const request = protocol.get(url, (response) => {
+                if (response.statusCode === 302 || response.statusCode === 301) {
+                    downloadFile(response.headers.location, fileName).then(resolve).catch(reject);
+                    return;
+                }
+                if (response.statusCode !== 200) {
+                    fs.unlink(destPath, () => { });
+                    reject(new Error(`Status Code: ${response.statusCode}`));
+                    return;
+                }
+                response.pipe(fileStream);
+                fileStream.on('finish', () => {
+                    fileStream.close(() => resolve(destPath));
+                });
+                fileStream.on('error', (err) => {
+                    fs.unlink(destPath, () => { });
+                    reject(err);
+                });
+            });
+            request.on('error', (err) => {
+                fs.unlink(destPath, () => { });
+                reject(err);
+            });
+        });
+    };
+
+    const sendProgress = (current, total) => {
+        // Use 'batch-download-progress' to distinguish from auto-updater
+        event.sender.send('batch-download-progress', { current, total });
+    };
+
+    const downloadResults = await Promise.allSettled(
+        files.map(async (file, index) => {
+            try {
+                const safeName = file.name.replace(/[<>:"/\\|?*]+/g, '_');
+                await downloadFile(file.url, safeName);
+                sendProgress(index + 1, files.length);
+                return { success: true, name: file.name };
+            } catch (error) {
+                console.error(`Failed to download ${file.name}:`, error);
+                sendProgress(index + 1, files.length);
+                return { success: false, name: file.name, error: error.message };
+            }
+        })
+    );
+
+    const successCount = downloadResults.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    const failCount = downloadResults.length - successCount;
+
+    try {
+        const output = fs.createWriteStream(filePath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        await new Promise((resolve, reject) => {
+            output.on('close', resolve);
+            archive.on('error', reject);
+            archive.pipe(output);
+            archive.directory(tempDir, false);
+            archive.finalize();
+        });
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return {
+            success: true,
+            message: `已打包为 ZIP：成功 ${successCount} 个，失败 ${failCount} 个`,
+            stats: { success: successCount, fail: failCount }
+        };
+    } catch (err) {
+        console.error('ZIP creation failed:', err);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        return {
+            success: false,
+            message: `ZIP 创建失败: ${err.message}`,
+            stats: { success: successCount, fail: failCount }
+        };
+    }
 });
