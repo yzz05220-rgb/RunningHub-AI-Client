@@ -6,157 +6,46 @@
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RunningHub AI 客户端</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'Noto Sans SC', 'system-ui', 'sans-serif'],
-          },
-          brand: {
-            50: '#ECFDF5',  /* Emerald 50 */
-            100: '#D1FAE5', /* Emerald 100 */
-            200: '#A7F3D0', /* Emerald 200 */
-            300: '#6EE7B7', /* Emerald 300 */
-            400: '#34D399', /* Emerald 400 */
-            500: '#10B981', /* Emerald 500 - Primary */
-            600: '#059669', /* Emerald 600 */
-            700: '#047857', /* Emerald 700 */
-            800: '#065F46', /* Emerald 800 */
-            900: '#064E3B', /* Emerald 900 */
-          }
-        },
-        animation: {
-          'pulse-slow': 'pulse 3s ease-in-out infinite',
-          'float': 'float 3s ease-in-out infinite',
-          'glow': 'glow 2s ease-in-out infinite alternate',
-        },
-        keyframes: {
-          float: {
-            '0%, 100%': { transform: 'translateY(0)' },
-            '50%': { transform: 'translateY(-10px)' },
-          },
-          glow: {
-            '0%': { opacity: '0.5' },
-            '100%': { opacity: '1' },
-          }
-        }
-      }
-    }
-  </script>
+
+  <!-- 本地字体回退：优先使用系统字体，可选加载 Google Fonts -->
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap"
     rel="stylesheet">
-  <style>
-    body {
-      font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+
+  <!-- PayPal SDK (仅Web端加载) -->
+  <script>
+    // 检测环境，仅在 Web 端（非 Electron）加载 PayPal SDK
+    const isElectron = typeof window !== 'undefined' && window.navigator.userAgent.toLowerCase().includes('electron');
+    const enablePayPal = '%VITE_ENABLE_PAYPAL%';
+
+    // 开发模式下 enablePayPal 会是字符串 '%VITE_ENABLE_PAYPAL%'
+    // 生产模式下会被替换为 'true' 或 'false'
+    const shouldLoadPayPal = !isElectron && (enablePayPal === 'true' || enablePayPal.includes('VITE_ENABLE_PAYPAL'));
+
+    if (shouldLoadPayPal) {
+      const paypalScript = document.createElement('script');
+      paypalScript.src = 'https://www.paypal.com/sdk/js?client-id=AXnm4V-1TLQsmzOKljf6_22LruekktYVUD2kdoSvjcBADkuRSGhTwjyN2lhHzVxXInZoQ_j7aGqsfiNG&components=buttons&disable-funding=venmo&currency=USD';
+      document.head.appendChild(paypalScript);
+      console.log('PayPal SDK loaded for Web environment');
     }
+  </script>
 
-    /* Custom Scrollbar for nicer UI */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 3px;
-    }
-
-    .dark ::-webkit-scrollbar-thumb {
-      background: #475569;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8;
-    }
-
-    .dark ::-webkit-scrollbar-thumb:hover {
-      background: #64748b;
-    }
-
-    /* Glass morphism effect */
-    .glass {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-    }
-
-    .dark .glass {
-      background: rgba(30, 30, 40, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    /* Gradient button */
-    .btn-gradient {
-      background: linear-gradient(135deg, #10B981, #14B8A6);
-      transition: all 0.3s ease;
-    }
-
-    .btn-gradient:hover {
-      background: linear-gradient(135deg, #059669, #0D9488);
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.5);
-    }
-
-    /* Glow effect */
-    .glow-effect {
-      box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
-    }
-
-    /* Subtle gradient background */
-    .bg-gradient-subtle {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(20, 184, 166, 0.05));
-    }
-
-    .dark .bg-gradient-subtle {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(20, 184, 166, 0.1));
-    }
-
-    /* Card hover effect */
-    .card-hover {
-      transition: all 0.3s ease;
-    }
-
-    .card-hover:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.2);
-    }
-
-    /* Input focus ring */
-    .input-focus:focus {
-      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-    }
-
-    /* Animation for empty state */
-    @keyframes bounce-gentle {
-
-      0%,
-      100% {
-        transform: translateY(0);
-      }
-
-      50% {
-        transform: translateY(-5px);
-      }
-    }
-
-    .animate-bounce-gentle {
-      animation: bounce-gentle 2s ease-in-out infinite;
-    }
-  </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"
+  }
+}
+  </script>
+  <link rel="stylesheet" href="/index.css">
 </head>
 
 <body class="bg-slate-100 dark:bg-[#0F1115] transition-colors duration-300">
   <div id="root"></div>
-  <script type="module" src="./index.tsx"></script>
+  <script type="module" src="/index.tsx"></script>
 </body>
 
 </html>

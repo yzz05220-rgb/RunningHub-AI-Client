@@ -1,7 +1,7 @@
 {
   "name": "runninghub-ai-client",
   "private": true,
-  "version": "1.8.5",
+  "version": "1.8.6",
   "productName": "RunningHub AI",
   "description": "RunningHub AI Client - 桌面端应用",
   "author": "RunningHub AI Team",
@@ -42,10 +42,13 @@
     "@tauri-apps/plugin-shell": "^2.3.3",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.23",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^30.5.1",
     "electron-builder": "^24.13.3",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "wait-on": "^9.0.3"

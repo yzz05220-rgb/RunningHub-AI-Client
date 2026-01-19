@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+body {
+    font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+}
+
+/* Custom Scrollbar for nicer UI */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: #475569;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* Glass morphism effect */
+.glass {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dark .glass {
+    background: rgba(30, 30, 40, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Gradient button */
+.btn-gradient {
+    background: linear-gradient(135deg, #10B981, #14B8A6);
+    transition: all 0.3s ease;
+}
+
+.btn-gradient:hover {
+    background: linear-gradient(135deg, #059669, #0D9488);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 20px -10px rgba(16, 185, 129, 0.5);
+}
+
+/* Glow effect */
+.glow-effect {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
+}
+
+/* Subtle gradient background */
+.bg-gradient-subtle {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(20, 184, 166, 0.05));
+}
+
+.dark .bg-gradient-subtle {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(20, 184, 166, 0.1));
+}
+
+/* Card hover effect */
+.card-hover {
+    transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px -12px rgba(0, 0, 0, 0.2);
+}
+
+/* Input focus ring */
+.input-focus:focus {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
